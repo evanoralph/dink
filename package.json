@@ -1,0 +1,22 @@
+{
+  "name": "dink",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "start": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/start.ps1",
+    "down": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/down.ps1",
+    "stop": "npm run down",
+    "dev:mongo": "docker compose up -d mongo",
+    "dev:mongo:down": "docker compose down",
+    "dev:web": "pnpm --filter web dev",
+    "dev:api": "cd apps/api && meteor run --port 3001 --settings settings.json",
+    "dev": "pnpm run start",
+    "build:web": "pnpm --filter web build",
+    "lint:web": "pnpm --filter web lint",
+    "smoke:api": "node scripts/ci-api-smoke.mjs",
+    "ci": "pnpm lint:web && pnpm build:web && pnpm smoke:api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

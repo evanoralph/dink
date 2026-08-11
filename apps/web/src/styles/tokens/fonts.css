@@ -1,0 +1,6 @@
+/* Fonts loaded via <link> in layout.tsx (Google Fonts). */
+:root {
+  --font-display: "Anton", "Arial Narrow", sans-serif;
+  --font-sans: "Archivo", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}

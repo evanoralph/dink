@@ -1,0 +1,35 @@
+:root {
+  /* Display — Anton, always uppercase, always tight */
+  --display-xl: 96px;
+  --display-lg: 68px;
+  --display-md: 48px;
+  --display-sm: 34px;
+  --display-leading: 0.88;
+  --display-tracking: 0.01em;
+
+  /* Text — Archivo */
+  --text-2xl: 28px;
+  --text-xl: 22px;
+  --text-lg: 18px;
+  --text-md: 16px;
+  --text-sm: 14px;
+  --text-xs: 12px;
+  --text-leading: 1.5;
+  --text-leading-tight: 1.25;
+
+  /* Label / eyebrow — Archivo 700, wide tracking, uppercase */
+  --label-size: 12px;
+  --label-tracking: 0.14em;
+  --label-weight: 700;
+
+  /* Data — JetBrains Mono, scores and stats */
+  --data-lg: 40px;
+  --data-md: 20px;
+  --data-sm: 13px;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-black: 800;
+}

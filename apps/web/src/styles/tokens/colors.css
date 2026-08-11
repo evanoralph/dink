@@ -1,0 +1,66 @@
+:root {
+  /* Brand — optic ball yellow-green, the single loudest colour in the system */
+  --volt-100: #F4FFC2;
+  --volt-200: #E4FF6B;
+  --volt-300: #D4F53C;
+  --volt-400: #C6E82A; /* core brand volt */
+  --volt-500: #A8C712;
+  --volt-600: #7E9709;
+
+  /* Court — deep saturated green, the default dark surface */
+  --court-50: #EAF2EC;
+  --court-300: #4E7A5C;
+  --court-500: #23503A;
+  --court-700: #123122;
+  --court-900: #0A1C13;
+
+  /* Baseline — electric blue, second energy colour (line paint, flags, alerts) */
+  --baseline-300: #6B84F7;
+  --baseline-500: #2A45E8;
+  --baseline-700: #1A2CA8;
+
+  /* Kitchen — warm clay orange, used sparingly for heat / streaks */
+  --kitchen-300: #FFA277;
+  --kitchen-500: #F2591F;
+  --kitchen-700: #B33B0E;
+
+  /* Neutrals — warm cream through carbon */
+  --cream-50: #FBF8EF;
+  --cream-100: #F4EFE1;
+  --cream-200: #E6DFCC;
+  --grey-400: #A9A296;
+  --grey-600: #6B665D;
+  --carbon-700: #33322F;
+  --carbon-800: #1F1E1C;
+  --carbon-900: #111110;
+
+  /* Semantic aliases */
+  --bg-page: var(--cream-50);
+  --bg-page-dark: var(--court-900);
+  --surface-card: #FFFFFF;
+  --surface-card-dark: var(--court-700);
+  --surface-sunken: var(--cream-100);
+  --surface-inverse: var(--carbon-900);
+
+  --text-body: var(--carbon-800);
+  --text-muted: var(--grey-600);
+  --text-inverse: var(--cream-50);
+  --text-accent: var(--court-500);
+
+  --border-hairline: var(--cream-200);
+  --border-strong: var(--carbon-900);
+  --border-dark: rgba(255, 255, 255, 0.14);
+
+  --action-primary: var(--volt-400);
+  --action-primary-hover: var(--volt-300);
+  --action-primary-press: var(--volt-500);
+  --action-on-primary: var(--carbon-900);
+  --action-secondary: var(--carbon-900);
+  --action-on-secondary: var(--cream-50);
+
+  --focus-ring: var(--baseline-500);
+  --status-live: var(--kitchen-500);
+  --status-win: var(--volt-500);
+  --status-info: var(--baseline-500);
+  --status-danger: #D42A2A;
+}

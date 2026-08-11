@@ -1,0 +1,16 @@
+{
+  "name": "api",
+  "private": true,
+  "scripts": {
+    "start": "meteor run --port 3001 --settings settings.json",
+    "dev": "meteor run --port 3001 --settings settings.json"
+  },
+  "dependencies": {
+    "@babel/runtime": "^7.23.5",
+    "bcrypt": "^6.0.0",
+    "body-parser": "^2.3.0",
+    "cors": "^2.8.6",
+    "meteor-node-stubs": "^1.2.12",
+    "zod": "^3.24.2"
+  }
+}

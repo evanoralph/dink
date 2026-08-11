@@ -1,0 +1,33 @@
+:root {
+  /* Radii — balls are round, paddles are soft-cornered rectangles. Nothing is fully square. */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-xl: 32px;
+  --radius-pill: 999px;
+  --radius-paddle: 22px 22px 26px 26px;
+
+  --border-1: 1px;
+  --border-2: 2px;
+  --border-3: 3px;
+
+  /* Shadows — one soft ambient, one hard "sticker" offset used on brand surfaces */
+  --shadow-sm: 0 1px 2px rgba(17, 17, 16, 0.08);
+  --shadow-md: 0 6px 18px rgba(17, 17, 16, 0.10);
+  --shadow-lg: 0 18px 48px rgba(17, 17, 16, 0.16);
+  --shadow-hard: 4px 4px 0 var(--carbon-900);
+  --shadow-hard-volt: 4px 4px 0 var(--volt-400);
+  --shadow-inset-court: inset 0 0 0 2px rgba(255, 255, 255, 0.12);
+  --glow-volt: 0 0 32px rgba(198, 232, 42, 0.45);
+
+  /* Overlays */
+  --scrim-bottom: linear-gradient(to top, rgba(10, 28, 19, 0.92) 0%, rgba(10, 28, 19, 0) 70%); /* @kind other */
+  --blur-glass: blur(14px); /* @kind other */
+  --glass-dark: rgba(10, 28, 19, 0.55);
+  --glass-light: rgba(251, 248, 239, 0.72);
+
+  /* The ball: 40 holes, drilled. Used as a repeating brand texture. */
+  --ball-dots: radial-gradient(circle at 50% 50%, rgba(10, 28, 19, 0.28) 0 3px, transparent 3.5px); /* @kind other */
+  --ball-dots-size: 22px 22px;
+}

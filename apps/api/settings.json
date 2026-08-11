@@ -1,0 +1,10 @@
+{
+  "public": {
+    "appName": "Dink API"
+  },
+  "packages": {
+    "dynamic-import": {
+      "useLocationOrigin": true
+    }
+  }
+}
