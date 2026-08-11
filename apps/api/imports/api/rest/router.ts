@@ -7,7 +7,7 @@ import { resolveUserFromRequest } from "../../lib/auth";
 import { logError, logInfo } from "../../lib/logger";
 import { runWithUserId } from "../../lib/requestContext";
 
-type Req = IncomingMessage & { body?: unknown; url?: string };
+type Req = IncomingMessage & { body?: unknown; url?: string; rawBody?: string };
 type Res = ServerResponse;
 
 const ALLOWED_ORIGINS = (
@@ -73,6 +73,12 @@ async function handler(req: Req, res: Res) {
     // P0-04: public subset for marketing + checkout (no auth).
     if (method === "GET" && url.pathname === "/api/v1/feature-flags") {
       send(res, 200, await Meteor.callAsync("featureFlags.public"));
+      return true;
+    }
+
+    // P1-01: public payment mode for web checkout UX.
+    if (method === "GET" && url.pathname === "/api/v1/payments/config") {
+      send(res, 200, await Meteor.callAsync("payments.config"));
       return true;
     }
 
@@ -263,6 +269,29 @@ async function handler(req: Req, res: Res) {
     }
 
     if (method === "POST" && url.pathname === "/api/v1/payments/webhook") {
+      const signature =
+        (req.headers["paymongo-signature"] as string | undefined) ||
+        (req.headers["Paymongo-Signature"] as string | undefined);
+      const rawBody =
+        (req as Req & { rawBody?: string }).rawBody ||
+        (typeof body === "object" ? JSON.stringify(body) : String(body || ""));
+
+      // PayMongo signed webhooks
+      if (signature) {
+        const { verifyPaymongoSignature } = await import("../../modules/payments/webhookSecurity");
+        verifyPaymongoSignature(rawBody, signature);
+        send(
+          res,
+          200,
+          await Meteor.callAsync("payments.webhook", {
+            paymongo: true,
+            event: body,
+          }),
+        );
+        return true;
+      }
+
+      // Stub / shared-secret webhook (local + tests)
       send(res, 200, await Meteor.callAsync("payments.webhook", body));
       return true;
     }
@@ -440,7 +469,15 @@ WebApp.connectHandlers.use(
     credentials: true,
   }),
 );
-WebApp.connectHandlers.use(bodyParser.json({ limit: "1mb" }));
+// Capture raw body for PayMongo signature verification (P1-03).
+WebApp.connectHandlers.use(
+  bodyParser.json({
+    limit: "1mb",
+    verify: (req, _res, buf) => {
+      (req as IncomingMessage & { rawBody?: string }).rawBody = buf.toString("utf8");
+    },
+  }),
+);
 WebApp.connectHandlers.use(async (req, res, next) => {
   const handled = await handler(req as Req, res as Res);
   if (!handled) next();

@@ -42,6 +42,8 @@ export async function ensureIndexes() {
   await Matches.createIndexAsync({ status: 1, createdAt: -1 });
   await Payments.createIndexAsync({ bookingId: 1, userId: 1 });
   await Payments.createIndexAsync({ status: 1, createdAt: -1 });
+  await Payments.createIndexAsync({ providerPaymentId: 1 }, { sparse: true });
+  await Payments.createIndexAsync({ providerSessionId: 1 }, { sparse: true });
   await Notifications.createIndexAsync({ userId: 1, createdAt: -1 });
   await AdminAuditLogs.createIndexAsync({ createdAt: -1 });
   await AdminAuditLogs.createIndexAsync({ actorUserId: 1, createdAt: -1 });

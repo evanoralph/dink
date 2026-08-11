@@ -10,8 +10,8 @@ import {
   Venues,
 } from "../../collections";
 import { requireUserId, userHasRole } from "../../lib/auth";
-import { isFeatureEnabled } from "../../lib/featureFlags";
 import { withMethodLog, logInfo } from "../../lib/logger";
+import { resolveCheckoutProvider } from "../payments/providers";
 
 const ACTIVE = ["pending_payment", "confirmed"] as const;
 
@@ -147,10 +147,39 @@ Meteor.methods({
       const userId = await requireUserId(this.userId);
       const parts = await BookingParticipants.find({ userId }).fetchAsync();
       const ids = parts.map((p) => p.bookingId);
-      return Bookings.find(
+      const bookings = await Bookings.find(
         { _id: { $in: ids } },
         { sort: { startsAt: 1 } },
       ).fetchAsync();
+
+      // P1-04: attach latest payment so UI can show retry / failed / pending.
+      const payments = ids.length
+        ? await Payments.find(
+            { bookingId: { $in: ids } },
+            { sort: { createdAt: -1 } },
+          ).fetchAsync()
+        : [];
+      const latestByBooking = new Map<string, (typeof payments)[number]>();
+      for (const p of payments) {
+        if (!latestByBooking.has(p.bookingId)) latestByBooking.set(p.bookingId, p);
+      }
+
+      const enriched = bookings.map((b) => {
+        const latestPayment = b._id ? latestByBooking.get(b._id) : undefined;
+        return {
+          ...b,
+          latestPayment: latestPayment
+            ? {
+                _id: latestPayment._id,
+                status: latestPayment.status,
+                provider: latestPayment.provider,
+                checkoutUrl: latestPayment.checkoutUrl,
+              }
+            : null,
+        };
+      });
+      logInfo("bookings.mine.ok", { count: enriched.length, userId });
+      return enriched;
     });
   },
 
@@ -167,65 +196,124 @@ Meteor.methods({
         await Bookings.updateAsync(booking._id!, {
           $set: { status: "expired", updatedAt: new Date() },
         });
-        throw new Meteor.Error("expired", "Booking payment window expired");
+        await Payments.updateAsync(
+          { bookingId: booking._id!, status: "pending" },
+          { $set: { status: "failed", updatedAt: new Date() } },
+          { multi: true },
+        );
+        logInfo("bookings.checkout.expired", { bookingId: booking._id });
+        throw new Meteor.Error(
+          "expired",
+          "Booking payment window expired. The slot was released — book again.",
+        );
+      }
+
+      const participant = await BookingParticipants.findOneAsync({
+        bookingId: booking._id!,
+        userId,
+      });
+      if (!participant && booking.creatorUserId !== userId) {
+        throw new Meteor.Error("forbidden", "Not your booking");
       }
 
       await assertNoOverlap(booking.courtId, booking.startsAt, booking.endsAt, booking._id);
 
-      // P0-04: runtime flag gates stub instant-pay; real PSP lands in Phase 1.
-      const stubEnabled = await isFeatureEnabled("payments_stub", true);
-      const envProvider = process.env.PAYMENT_PROVIDER || "stub";
-      const requested = input.provider || envProvider;
-      const provider = stubEnabled ? "stub" : requested;
-
-      logInfo("bookings.checkout.provider", {
-        bookingId: booking._id,
-        stubEnabled,
-        envProvider,
-        requested,
-        provider,
-      });
-
-      if (provider === "stub" && !stubEnabled) {
-        throw new Meteor.Error(
-          "payments-unavailable",
-          "Stub payments are disabled and a live payment provider is not configured yet.",
-        );
+      // P1-04: reuse open hosted checkout instead of creating duplicates.
+      const openPayment = await Payments.findOneAsync(
+        {
+          bookingId: booking._id!,
+          status: "pending",
+          checkoutUrl: { $exists: true, $type: "string" },
+        },
+        { sort: { createdAt: -1 } },
+      );
+      if (openPayment?.checkoutUrl) {
+        logInfo("bookings.checkout.reuse", {
+          bookingId: booking._id,
+          paymentId: openPayment._id,
+        });
+        return {
+          booking,
+          payment: openPayment,
+          mode: "redirect" as const,
+          checkoutUrl: openPayment.checkoutUrl,
+          reused: true,
+        };
       }
 
-      if (provider !== "stub") {
-        throw new Meteor.Error(
-          "payments-unavailable",
-          `Payment provider "${provider}" is not integrated yet. Enable payments_stub or wait for Phase 1 PSP.`,
-        );
-      }
-
+      // P1-01/P1-02: provider abstraction — stub instant OR PayMongo redirect (pending until webhook).
+      const provider = await resolveCheckoutProvider(input.provider);
+      const appUrl = process.env.APP_URL || process.env.ROOT_WEB_URL || "http://localhost:3000";
       const now = new Date();
+
+      // Create pending payment row first so webhook can resolve by paymentId/session.
       const paymentId = await Payments.insertAsync({
         bookingId: booking._id!,
         userId,
-        provider: "stub",
-        providerPaymentId: `stub_${Random.id()}`,
+        provider: provider.name,
         amount: booking.total,
         currency: booking.currency,
-        status: "paid",
+        status: "pending",
+        webhookEventIds: [],
         createdAt: now,
         updatedAt: now,
       });
 
-      await BookingParticipants.updateAsync(
-        { bookingId: booking._id!, userId },
-        { $set: { paymentStatus: "paid" } },
-      );
-      await Bookings.updateAsync(booking._id!, {
-        $set: { status: "confirmed", updatedAt: now },
-        $unset: { expiresAt: 1 },
+      const checkout = await provider.createCheckout({
+        bookingId: booking._id!,
+        paymentId,
+        amount: booking.total,
+        currency: booking.currency,
+        description: `Dink court booking ${booking._id}`,
+        successUrl: `${appUrl}/bookings?paid=1&bookingId=${booking._id}`,
+        cancelUrl: `${appUrl}/bookings?cancelled=1&bookingId=${booking._id}`,
       });
 
-      logInfo("bookings.checkout.ok", { bookingId: booking._id, paymentId, provider: "stub", stubEnabled });
+      await Payments.updateAsync(paymentId, {
+        $set: {
+          providerPaymentId: checkout.providerPaymentId,
+          providerSessionId: checkout.providerSessionId,
+          checkoutUrl: checkout.checkoutUrl,
+          status: checkout.status,
+          metadata: checkout.raw ? { checkout: checkout.raw } : undefined,
+          updatedAt: new Date(),
+        },
+      });
+
+      if (checkout.mode === "instant" && checkout.status === "paid") {
+        await BookingParticipants.updateAsync(
+          { bookingId: booking._id!, userId },
+          { $set: { paymentStatus: "paid" } },
+        );
+        await Bookings.updateAsync(booking._id!, {
+          $set: { status: "confirmed", updatedAt: new Date() },
+          $unset: { expiresAt: 1 },
+        });
+      } else {
+        // Keep booking pending_payment until webhook confirms.
+        logInfo("bookings.checkout.await_webhook", {
+          bookingId: booking._id,
+          paymentId,
+          provider: provider.name,
+          sessionId: checkout.providerSessionId,
+        });
+      }
+
+      logInfo("bookings.checkout.ok", {
+        bookingId: booking._id,
+        paymentId,
+        provider: provider.name,
+        mode: checkout.mode,
+        status: checkout.status,
+        retry: Boolean(openPayment === undefined),
+      });
+
       return {
         booking: await Bookings.findOneAsync(booking._id!),
         payment: await Payments.findOneAsync(paymentId),
+        mode: checkout.mode,
+        checkoutUrl: checkout.checkoutUrl || null,
+        reused: false,
       };
     });
   },

@@ -18,27 +18,50 @@ type Slot = {
 type Props = {
   venueId: string;
   slots: Slot[];
-  /** From FeatureFlags.payments_stub — server decides provider; UI stays honest. */
+  /** From FeatureFlags.payments_stub */
   paymentsStub?: boolean;
+  /** From GET /payments/config */
+  paymentProvider?: string;
+  redirectCheckout?: boolean;
 };
 
-export function BookingActions({ venueId, slots, paymentsStub = true }: Props) {
+type CheckoutResult = {
+  booking: { _id: string; status: string };
+  payment: { _id: string; status: string };
+  mode: "instant" | "redirect";
+  checkoutUrl?: string | null;
+};
+
+export function BookingActions({
+  venueId,
+  slots,
+  paymentsStub = true,
+  paymentProvider = "stub",
+  redirectCheckout = false,
+}: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const open = slots.filter((s) => s.available).slice(0, 12);
+  const canCheckout = paymentsStub || redirectCheckout;
 
   useEffect(() => {
-    logDebug("bookingActions.mount", { venueId, paymentsStub, openSlots: open.length });
-  }, [venueId, paymentsStub, open.length]);
+    logDebug("bookingActions.mount", {
+      venueId,
+      paymentsStub,
+      paymentProvider,
+      redirectCheckout,
+      openSlots: open.length,
+    });
+  }, [venueId, paymentsStub, paymentProvider, redirectCheckout, open.length]);
 
   async function book(slot: Slot) {
     setBusy(slot.startsAt + slot.courtId);
     setMessage(null);
     try {
-      if (!paymentsStub) {
-        logInfo("booking.checkout.blocked_ui", { venueId, reason: "payments_stub_disabled" });
-        setMessage("Live payments are not available yet. Stub checkout is currently disabled.");
+      if (!canCheckout) {
+        logInfo("booking.checkout.blocked_ui", { venueId, reason: "no_provider" });
+        setMessage("Checkout is unavailable. Enable stub payments or configure PayMongo.");
         return;
       }
 
@@ -55,14 +78,29 @@ export function BookingActions({ venueId, slots, paymentsStub = true }: Props) {
       });
       logInfo("booking.created", { bookingId: booking._id });
 
-      // Provider resolved server-side from FeatureFlags + PAYMENT_PROVIDER.
-      const checkout = await clientApiFetch<{ booking: { _id: string } }>(
-        `/bookings/${booking._id}/checkout`,
-        { method: "POST", body: {} },
+      const checkout = await clientApiFetch<CheckoutResult>(`/bookings/${booking._id}/checkout`, {
+        method: "POST",
+        body: {},
+      });
+      logInfo("booking.checkedOut", {
+        bookingId: checkout.booking._id,
+        mode: checkout.mode,
+        status: checkout.payment.status,
+        provider: paymentProvider,
+      });
+
+      if (checkout.mode === "redirect" && checkout.checkoutUrl) {
+        setMessage("Redirecting to secure checkout…");
+        window.location.href = checkout.checkoutUrl;
+        return;
+      }
+
+      setMessage(
+        checkout.payment.status === "paid"
+          ? "Booked and paid (pilot stub). Redirecting…"
+          : "Booking created. Waiting for payment confirmation…",
       );
-      logInfo("booking.checkedOut", { bookingId: checkout.booking._id, paymentsStub });
-      setMessage(paymentsStub ? "Booked and paid (pilot stub). Redirecting…" : "Booked. Redirecting…");
-      router.push("/bookings");
+      router.push(`/bookings?bookingId=${checkout.booking._id}`);
       router.refresh();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Booking failed");
@@ -73,15 +111,19 @@ export function BookingActions({ venueId, slots, paymentsStub = true }: Props) {
 
   return (
     <div>
-      {paymentsStub && (
+      {paymentProvider === "stub" && paymentsStub && (
         <p style={{ marginBottom: 12, color: "var(--text-muted)", fontSize: 14 }}>
-          Pilot checkout: payment is confirmed instantly via stub provider (feature flag{" "}
-          <code>payments_stub</code>).
+          Pilot checkout: confirmed instantly via stub provider (`PAYMENT_PROVIDER=stub`).
         </p>
       )}
-      {!paymentsStub && (
+      {redirectCheckout && (
         <p style={{ marginBottom: 12, color: "var(--text-muted)", fontSize: 14 }}>
-          Live payment checkout is required. Stub payments are disabled until a real provider is wired.
+          Checkout uses PayMongo hosted page (GCash / Maya / card). Booking confirms after webhook.
+        </p>
+      )}
+      {!canCheckout && (
+        <p style={{ marginBottom: 12, color: "var(--text-muted)", fontSize: 14 }}>
+          Payments are not configured. Set `PAYMENT_PROVIDER=paymongo` + keys, or enable `payments_stub`.
         </p>
       )}
       {message && <p style={{ marginBottom: 12 }}>{message}</p>}
@@ -104,7 +146,7 @@ export function BookingActions({ venueId, slots, paymentsStub = true }: Props) {
               <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>₱{slot.price}</span>
               <button
                 className="btn-primary"
-                disabled={!paymentsStub || busy === slot.startsAt + slot.courtId}
+                disabled={!canCheckout || busy === slot.startsAt + slot.courtId}
                 onClick={() => book(slot)}
                 style={{ height: 36, padding: "0 14px" }}
               >

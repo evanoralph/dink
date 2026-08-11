@@ -6,6 +6,7 @@ import { VenueReviewForm } from "@/components/courts/VenueReviewForm";
 import { apiFetch } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { getPublicFeatureFlags } from "@/lib/feature-flags";
+import { getPaymentConfig } from "@/lib/payments";
 import type { Court, Venue, VenueReview } from "@/lib/types";
 import { logInfo } from "@/lib/logger";
 
@@ -13,7 +14,7 @@ export default async function CourtDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const date = new Date().toISOString().slice(0, 10);
   const user = await getCurrentUser();
-  const flags = await getPublicFeatureFlags();
+  const [flags, paymentConfig] = await Promise.all([getPublicFeatureFlags(), getPaymentConfig()]);
   const detail = await apiFetch<{ venue: Venue; courts: Court[] }>(`/api/v1/venues/${id}`);
   const availability = await apiFetch<{
     slots: Array<{
@@ -57,6 +58,8 @@ export default async function CourtDetailPage({ params }: { params: Promise<{ id
     reviews: reviews.length,
     images: detail.venue.imageUrls?.length || 0,
     paymentsStub: flags.payments_stub,
+    paymentProvider: paymentConfig.provider,
+    redirectCheckout: paymentConfig.redirectCheckout,
   });
 
   return (
@@ -97,7 +100,13 @@ export default async function CourtDetailPage({ params }: { params: Promise<{ id
         <p style={{ color: "var(--text-muted)", marginBottom: 20 }}>
           Availability for {date}
         </p>
-        <BookingActions venueId={id} slots={availability.slots} paymentsStub={flags.payments_stub} />
+        <BookingActions
+          venueId={id}
+          slots={availability.slots}
+          paymentsStub={flags.payments_stub}
+          paymentProvider={paymentConfig.provider}
+          redirectCheckout={paymentConfig.redirectCheckout}
+        />
 
         <h2
           style={{

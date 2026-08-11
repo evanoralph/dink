@@ -160,10 +160,18 @@ export interface PaymentDoc {
   bookingId: string;
   userId: string;
   provider: string;
+  /** Provider charge/payment id (e.g. pay_xxx or stub_xxx). */
   providerPaymentId?: string;
+  /** Hosted checkout session id (e.g. PayMongo cs_xxx). */
+  providerSessionId?: string;
+  /** Redirect URL for hosted checkout (PayMongo). */
+  checkoutUrl?: string;
   amount: number;
   currency: string;
   status: PaymentStatus;
+  /** Processed webhook event ids for idempotency. */
+  webhookEventIds?: string[];
+  metadata?: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
 }

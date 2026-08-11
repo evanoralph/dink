@@ -25,6 +25,10 @@ const requiredFiles = [
   "apps/api/imports/lib/seedPolicy.ts",
   "apps/api/imports/api/rest/router.ts",
   "apps/api/imports/modules/featureFlags/methods.ts",
+  "apps/api/imports/modules/payments/providers/paymongo.ts",
+  "apps/api/imports/modules/payments/providers/index.ts",
+  "apps/api/imports/modules/payments/webhookSecurity.ts",
+  "apps/api/imports/modules/payments/providers/refunds.ts",
   "apps/api/tsconfig.json",
 ];
 

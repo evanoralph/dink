@@ -26,6 +26,7 @@ export const ApiPaths = {
   matchResult: (id: string) => `${API_PREFIX}/matches/${id}/result`,
   matchConfirm: (id: string) => `${API_PREFIX}/matches/${id}/confirm`,
   paymentsWebhook: `${API_PREFIX}/payments/webhook`,
+  paymentsConfig: `${API_PREFIX}/payments/config`,
   adminUsers: `${API_PREFIX}/admin/users`,
   adminUsersRoles: `${API_PREFIX}/admin/users/roles`,
   adminVenues: `${API_PREFIX}/admin/venues`,

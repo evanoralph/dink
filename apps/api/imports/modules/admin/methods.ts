@@ -3,6 +3,7 @@ import { Meteor } from "meteor/meteor";
 import { Roles } from "meteor/alanning:roles";
 import {
   AdminAuditLogs,
+  BookingParticipants,
   Bookings,
   Courts,
   FeatureFlags,
@@ -576,11 +577,52 @@ Meteor.methods({
         throw new Meteor.Error("invalid-state", "Only pending payments can be voided");
       }
 
+      // P1-05: call PayMongo refund API when refunding a live/sandbox pay_… payment.
+      let providerRefundId: string | undefined;
+      if (input.status === "refunded" && before.provider === "paymongo") {
+        const { refundPaymongoPayment } = await import("../payments/providers/refunds");
+        const payId =
+          before.providerPaymentId?.startsWith("pay_")
+            ? before.providerPaymentId
+            : typeof before.metadata?.paymongoPaymentId === "string"
+              ? before.metadata.paymongoPaymentId
+              : null;
+        if (!payId) {
+          throw new Meteor.Error(
+            "invalid-state",
+            "No PayMongo pay_… id on this payment yet. Wait for paid webhook, then refund.",
+          );
+        }
+        const refund = await refundPaymongoPayment({
+          providerPaymentId: payId,
+          amount: before.amount,
+          reason: "requested_by_customer",
+          notes: `Dink admin refund by ${actorId}`,
+        });
+        providerRefundId = refund.id;
+      }
+
       const next = input.status as PaymentStatus;
       await Payments.updateAsync(input.paymentId, {
-        $set: { status: next, updatedAt: new Date() },
+        $set: {
+          status: next,
+          updatedAt: new Date(),
+          ...(providerRefundId
+            ? { metadata: { ...(before.metadata || {}), providerRefundId } }
+            : {}),
+        },
       });
       if (input.status === "refunded") {
+        await Bookings.updateAsync(before.bookingId, {
+          $set: { status: "cancelled", updatedAt: new Date() },
+        });
+        await BookingParticipants.updateAsync(
+          { bookingId: before.bookingId },
+          { $set: { paymentStatus: "refunded" } },
+          { multi: true },
+        );
+      }
+      if (input.status === "void") {
         await Bookings.updateAsync(before.bookingId, {
           $set: { status: "cancelled", updatedAt: new Date() },
         });
@@ -591,10 +633,10 @@ Meteor.methods({
         action: "payments.setStatus",
         entityType: "payment",
         entityId: input.paymentId,
-        before: { status: before.status },
-        after: { status: after?.status },
+        before: { status: before.status, provider: before.provider },
+        after: { status: after?.status, providerRefundId: providerRefundId || null },
       });
-      logInfo("admin.payments.setStatus", input);
+      logInfo("admin.payments.setStatus", { ...input, providerRefundId: providerRefundId || null });
       return after;
     });
   },

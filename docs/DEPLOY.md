@@ -121,7 +121,56 @@ Do **not** set:
 - Meteor `CORS_ORIGINS` includes the Vercel URL(s)
 - Payment webhooks (later) point to `https://api.yourdomain.com/api/v1/payments/webhook`
 
-## 5) Seed policy (P0-07) — required in prod / shared envs
+## 5) Payments — PayMongo sandbox → live (P1-01…P1-06)
+
+Default local: `PAYMENT_PROVIDER=stub` (instant confirm).
+
+### Sandbox (staging)
+
+1. Create PayMongo account → **Test mode** keys
+2. Meteor env:
+
+```text
+PAYMENT_PROVIDER=paymongo
+PAYMONGO_SECRET_KEY=sk_test_...
+PAYMENT_WEBHOOK_SECRET=<strong-random-≥16-chars>
+APP_URL=https://staging.yourdomain.com
+```
+
+3. Feature flag: set `payments_stub` **false** in admin (optional; env provider already prefers PayMongo)
+4. PayMongo Dashboard → Webhooks → endpoint:
+
+```text
+https://api-staging.yourdomain.com/api/v1/payments/webhook
+```
+
+Subscribe at least to `checkout_session.payment.paid` (and failed if available). Use the same signing secret as `PAYMENT_WEBHOOK_SECRET` / `PAYMONGO_WEBHOOK_SECRET`.
+
+5. Smoke:
+   - Book a court → redirect to PayMongo → pay with test method
+   - Confirm API log `payments.webhook.ok` and booking status `confirmed`
+   - Replay webhook → `payments.webhook.idempotent` (no double side-effects)
+
+### Live
+
+- Switch to `sk_live_...` keys and live webhook URL on prod API
+- Never ship `PAYMENT_WEBHOOK_SECRET=dev-webhook-secret` (startup/webhook rejects weak secrets when `ROOT_URL` is https / `NODE_ENV=production`)
+
+### Stub webhook (local only)
+
+```bash
+curl -X POST http://localhost:3001/api/v1/payments/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"providerPaymentId":"stub_xxx","status":"paid","secret":"dev-webhook-secret"}'
+```
+
+### Failure / expire / refund (P1-04 / P1-05)
+
+- Unpaid `pending_payment` bookings expire ~15 minutes after create (job every 60s) → status `expired`, pending payments → `failed`, slot freed.
+- Player `/bookings` shows **Pay now / Retry payment** while pending; **Book again** after expire.
+- Admin **Refund** on a PayMongo `paid` payment calls PayMongo Refunds API (`pay_…` id from webhook), cancels booking, writes audit. Stub paid payments refund locally only.
+
+## 6) Seed policy (P0-07) — required in prod / shared envs
 
 **Always set on Meteor host:**
 
@@ -142,7 +191,7 @@ Runtime enforcement (also in code):
 
 Local Docker/dev may keep `SEED_ON_STARTUP=true` with the demo passwords.
 
-## 6) Post-deploy smoke test
+## 7) Post-deploy smoke test
 
 1. Confirm API logs show `seed.skipped` with `reason: prod_default_off` or `explicit_false`
 2. `GET https://api…/api/v1/health`

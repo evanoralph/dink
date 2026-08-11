@@ -74,6 +74,13 @@ export interface Booking {
   fees: number;
   total: number;
   currency: string;
+  expiresAt?: string;
+  latestPayment?: {
+    _id?: string;
+    status: string;
+    provider: string;
+    checkoutUrl?: string;
+  } | null;
 }
 
 export interface Game {

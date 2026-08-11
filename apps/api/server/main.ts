@@ -37,6 +37,7 @@ Meteor.startup(async () => {
     seedWillRun: seedDecision.run,
     seedReason: seedDecision.reason,
     paymentProvider: process.env.PAYMENT_PROVIDER || "stub",
+    paymongoConfigured: Boolean(process.env.PAYMONGO_SECRET_KEY),
     note: "AUTH_COOKIE_SECRET and NEXT_PUBLIC_METEOR_DDP_URL are intentionally unused (P0-06)",
   });
 
