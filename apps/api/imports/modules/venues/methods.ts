@@ -5,12 +5,14 @@ import { Roles } from "meteor/alanning:roles";
 import {
   AvailabilityRules,
   Bookings,
+  CourtBlackouts,
   Courts,
   Payments,
   PricingRules,
   VenueMemberships,
   Venues,
   type BookingStatus,
+  type PricingRuleDoc,
 } from "../../collections";
 import {
   adminListMatcher,
@@ -22,7 +24,9 @@ import {
   type AdminListInput,
 } from "../../lib/adminQuery";
 import { requireRole, requireUserId, userHasRole } from "../../lib/auth";
+import { track } from "../../lib/analytics";
 import { withMethodLog, logInfo, logDebug } from "../../lib/logger";
+import { runWithUserId } from "../../lib/requestContext";
 
 const VENUE_BOOKING_STATUSES: BookingStatus[] = ["confirmed", "cancelled", "completed"];
 
@@ -38,7 +42,7 @@ async function getAccessibleVenues(userId: string) {
   }).fetchAsync();
 }
 
-async function requireVenueAccess(
+export async function requireVenueAccess(
   userId: string | null | undefined,
   venueId: string,
   opts?: { ownerOnly?: boolean },
@@ -273,7 +277,12 @@ Meteor.methods({
         createdAt: now,
       });
 
+      await Roles.createRoleAsync("venue_owner", { unlessExists: true });
+      await Roles.addUsersToRolesAsync(userId, "venue_owner");
+      logInfo("venues.create.role_granted", { venueId, userId, role: "venue_owner" });
+
       logInfo("venues.create.ok", { venueId, userId });
+      track("venue_created", { userId, venueId, city: input.city });
       return await Venues.findOneAsync(venueId);
     });
   },
@@ -341,6 +350,83 @@ Meteor.methods({
     });
   },
 
+  /** P2-07: apply default hours + hourly price to every court (wizard). */
+  async "venues.applyOnboardDefaults"(input: {
+    venueId: string;
+    priceFrom?: number;
+    startTime?: string;
+    endTime?: string;
+    slotDurationMin?: number;
+  }) {
+    return withMethodLog("venues.applyOnboardDefaults", this.userId, async () => {
+      check(input, {
+        venueId: String,
+        priceFrom: Match.Optional(Number),
+        startTime: Match.Optional(String),
+        endTime: Match.Optional(String),
+        slotDurationMin: Match.Optional(Number),
+      });
+      await requireVenueAccess(this.userId, input.venueId, { ownerOnly: true });
+      const courts = await Courts.find({ venueId: input.venueId, active: true }).fetchAsync();
+      if (!courts.length) {
+        throw new Meteor.Error("invalid-state", "Add at least one court first");
+      }
+      const startTime = input.startTime || "06:00";
+      const endTime = input.endTime || "22:00";
+      const slotDurationMin = input.slotDurationMin || 60;
+      const priceFrom = Math.max(0, Math.round(input.priceFrom ?? 500));
+      let hoursAdded = 0;
+      let pricesAdded = 0;
+
+      for (const court of courts) {
+        for (let day = 0; day < 7; day++) {
+          const exists = await AvailabilityRules.findOneAsync({
+            courtId: court._id,
+            dayOfWeek: day,
+          });
+          if (exists) continue;
+          await AvailabilityRules.insertAsync({
+            courtId: court._id!,
+            venueId: input.venueId,
+            dayOfWeek: day,
+            startTime,
+            endTime,
+            slotDurationMin,
+          });
+          hoursAdded += 1;
+        }
+        const priceExists = await PricingRules.findOneAsync({
+          venueId: input.venueId,
+          courtId: court._id,
+        });
+        if (!priceExists) {
+          await PricingRules.insertAsync({
+            venueId: input.venueId,
+            courtId: court._id,
+            days: [0, 1, 2, 3, 4, 5, 6],
+            startTime,
+            endTime,
+            price: priceFrom,
+            pricingType: "hourly",
+          });
+          pricesAdded += 1;
+        }
+      }
+
+      await Venues.updateAsync(input.venueId, {
+        $set: { priceFrom, courtCount: courts.length, updatedAt: new Date() },
+      });
+      logInfo("venues.applyOnboardDefaults.ok", {
+        venueId: input.venueId,
+        courts: courts.length,
+        hoursAdded,
+        pricesAdded,
+        priceFrom,
+      });
+      return await Venues.findOneAsync(input.venueId);
+    });
+  },
+
   async "courts.create"(input: { venueId: string; name: string; surface?: string }) {
     return withMethodLog("courts.create", this.userId, async () => {
       const userId = await requireUserId(this.userId);
@@ -384,15 +470,43 @@ Meteor.methods({
         throw new Meteor.Error("invalid-date", "Invalid date");
       }
       const dayOfWeek = day.getUTCDay();
+      const dayStart = new Date(`${input.date}T00:00:00.000Z`);
+      const dayEnd = new Date(`${input.date}T23:59:59.999Z`);
       const courts = await Courts.find({ venueId: input.venueId, active: true }).fetchAsync();
       const bookings = await Bookings.find({
         venueId: input.venueId,
         status: { $in: ["pending_payment", "confirmed"] },
-        startsAt: {
-          $gte: new Date(`${input.date}T00:00:00.000Z`),
-          $lt: new Date(`${input.date}T23:59:59.999Z`),
-        },
+        startsAt: { $gte: dayStart, $lt: dayEnd },
       }).fetchAsync();
+
+      // P1-15: owner blackouts hide slots from players.
+      const blackouts = await CourtBlackouts.find({
+        venueId: input.venueId,
+        startsAt: { $lt: dayEnd },
+        endsAt: { $gt: dayStart },
+      }).fetchAsync();
+
+      const pricingRules = await PricingRules.find({ venueId: input.venueId }).fetchAsync();
+
+      const pickPrice = (courtId: string | undefined, slotStart: Date) => {
+        const hh = String(slotStart.getUTCHours()).padStart(2, "0");
+        const mm = String(slotStart.getUTCMinutes()).padStart(2, "0");
+        const t = `${hh}:${mm}`;
+        const matches = pricingRules.filter((p: PricingRuleDoc) => {
+          const courtOk = !p.courtId || p.courtId === courtId;
+          const dayOk = p.days.includes(dayOfWeek);
+          const timeOk = p.startTime <= t && t < p.endTime;
+          return courtOk && dayOk && timeOk;
+        });
+        // Prefer court-specific, then peak, then any.
+        matches.sort((a, b) => {
+          const courtScore = (x: PricingRuleDoc) => (x.courtId ? 0 : 1);
+          const typeScore = (x: PricingRuleDoc) =>
+            x.pricingType === "peak" ? 0 : x.pricingType === "hourly" ? 1 : 2;
+          return courtScore(a) - courtScore(b) || typeScore(a) - typeScore(b);
+        });
+        return matches[0]?.price ?? venue.priceFrom ?? 0;
+      };
 
       const slots = [];
       for (const court of courts) {
@@ -400,7 +514,6 @@ Meteor.methods({
           courtId: court._id,
           dayOfWeek,
         }).fetchAsync();
-        const pricing = await PricingRules.findOneAsync({ courtId: court._id });
         for (const rule of rules) {
           const [sh, sm] = rule.startTime.split(":").map(Number);
           const [eh, em] = rule.endTime.split(":").map(Number);
@@ -411,24 +524,38 @@ Meteor.methods({
           while (cursor < end) {
             const slotEnd = new Date(cursor.getTime() + rule.slotDurationMin * 60_000);
             if (slotEnd > end) break;
-            const taken = bookings.some(
+            const booked = bookings.some(
               (b) =>
                 b.courtId === court._id &&
                 overlaps(cursor, slotEnd, b.startsAt, b.endsAt),
             );
-            slots.push({
-              courtId: court._id,
-              courtName: court.name,
-              startsAt: cursor.toISOString(),
-              endsAt: slotEnd.toISOString(),
-              available: !taken,
-              price: pricing?.price ?? venue.priceFrom ?? 0,
-              currency: venue.currency,
-            });
+            const blocked = blackouts.some(
+              (bl) =>
+                bl.courtId === court._id &&
+                overlaps(cursor, slotEnd, bl.startsAt, bl.endsAt),
+            );
+            // Blacked-out slots are omitted so they disappear for players.
+            if (!blocked) {
+              slots.push({
+                courtId: court._id,
+                courtName: court.name,
+                startsAt: cursor.toISOString(),
+                endsAt: slotEnd.toISOString(),
+                available: !booked,
+                price: pickPrice(court._id, cursor),
+                currency: venue.currency,
+              });
+            }
             cursor = slotEnd;
           }
         }
       }
+      logDebug("venues.availability.ok", {
+        venueId: input.venueId,
+        date: input.date,
+        slots: slots.length,
+        blackouts: blackouts.length,
+      });
       return { venueId: input.venueId, date: input.date, slots };
     });
   },
@@ -705,6 +832,8 @@ Meteor.methods({
       await Bookings.updateAsync(input.bookingId, {
         $set: { status: input.status, updatedAt: new Date() },
       });
+      const { applyBookingReliability } = await import("../../lib/reliability");
+      await applyBookingReliability(input.bookingId, input.status, before.status);
       logInfo("venue.bookings.setStatus", input);
       return await Bookings.findOneAsync(input.bookingId);
     });
@@ -811,10 +940,56 @@ Meteor.methods({
         revenue: Number(seriesMap.get(key)?.revenue || 0),
       }));
 
+      const confirmedStarts = ids.length
+        ? await Bookings.find({
+            venueId: { $in: ids },
+            status: "confirmed",
+            startsAt: { $gte: from, $lte: to },
+          }).fetchAsync()
+        : [];
+      const bookedHours = confirmedStarts.reduce(
+        (s, b) => s + Math.max(0, (b.endsAt.getTime() - b.startsAt.getTime()) / 3_600_000),
+        0,
+      );
+      const courts = ids.length
+        ? await Courts.find({ venueId: { $in: ids }, active: true }).fetchAsync()
+        : [];
+      const rules = ids.length
+        ? await AvailabilityRules.find({ venueId: { $in: ids } }).fetchAsync()
+        : [];
+      let availableHours = 0;
+      for (const key of eachDayKeys(from, to)) {
+        const dow = new Date(`${key}T00:00:00.000Z`).getUTCDay();
+        for (const court of courts) {
+          const rule = rules.find((r) => r.courtId === court._id && r.dayOfWeek === dow);
+          if (!rule) continue;
+          const [sh, sm] = rule.startTime.split(":").map(Number);
+          const [eh, em] = rule.endTime.split(":").map(Number);
+          availableHours += Math.max(0, eh + em / 60 - (sh + sm / 60));
+        }
+      }
+      const hourCounts = new Map<number, number>();
+      for (const b of confirmedStarts) {
+        const h = b.startsAt.getUTCHours();
+        hourCounts.set(h, (hourCounts.get(h) || 0) + 1);
+      }
+      let peakHour = 0;
+      let peakCount = 0;
+      for (const [h, c] of hourCounts) {
+        if (c > peakCount) {
+          peakHour = h;
+          peakCount = c;
+        }
+      }
+      const utilizationPct =
+        availableHours > 0 ? Math.round((bookedHours / availableHours) * 1000) / 10 : 0;
+
       logInfo("venue.reports.summary.ok", {
         bookings: bookingsInRange.length,
         gmv,
         venues: venues.length,
+        utilizationPct,
+        peakHour,
       });
 
       return {
@@ -830,6 +1005,11 @@ Meteor.methods({
           revenueConfirmed: bookingsInRange
             .filter((b) => b.status === "confirmed")
             .reduce((s, b) => s + (b.total || 0), 0),
+          bookedHours: Math.round(bookedHours * 10) / 10,
+          availableHours: Math.round(availableHours * 10) / 10,
+          utilizationPct,
+          peakHour,
+          peakCount,
         },
         byStatus: Array.from(byStatusMap.entries()).map(([status, count]) => ({
           status,
@@ -837,6 +1017,40 @@ Meteor.methods({
         })),
         series,
       };
+    });
+  },
+
+  async "venue.reports.export"(input: AdminListInput = {}) {
+    return withMethodLog("venue.reports.export", this.userId, async () => {
+      const userId = await requireRole(this.userId, ["venue_owner", "venue_staff", "admin"]);
+      const summary = await runWithUserId(userId, () =>
+        Meteor.callAsync("venue.reports.summary", input),
+      ) as {
+        from: string;
+        to: string;
+        totals: Record<string, number>;
+        series: Array<{ date: string; bookings: number; revenue: number }>;
+      };
+      const lines = [
+        "metric,value",
+        `from,${summary.from}`,
+        `to,${summary.to}`,
+        `bookingsCreated,${summary.totals.bookingsCreated}`,
+        `confirmed,${summary.totals.confirmed}`,
+        `cancelled,${summary.totals.cancelled}`,
+        `gmv,${summary.totals.gmv}`,
+        `revenueConfirmed,${summary.totals.revenueConfirmed}`,
+        `bookedHours,${summary.totals.bookedHours}`,
+        `availableHours,${summary.totals.availableHours}`,
+        `utilizationPct,${summary.totals.utilizationPct}`,
+        `peakHourUtc,${summary.totals.peakHour}`,
+        "",
+        "date,bookings,revenue",
+        ...summary.series.map((r: { date: string; bookings: number; revenue: number }) => `${r.date},${r.bookings},${r.revenue}`),
+      ];
+      const csv = lines.join("\n");
+      logInfo("venue.reports.export.ok", { rows: summary.series.length });
+      return { csv, filename: `venue-report-${summary.from.slice(0, 10)}.csv`, summary };
     });
   },
 

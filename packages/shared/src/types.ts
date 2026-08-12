@@ -22,6 +22,11 @@ export interface PublicUser {
     city?: string;
     skillLevel?: number;
     onboardingComplete?: boolean;
+    reliabilityScore?: number;
+    reliabilityLevel?: "new" | "reliable" | "highly_reliable";
+    reliabilityCompleted?: number;
+    reliabilityNoShows?: number;
+    suspended?: boolean;
   };
   roles: Role[];
 }

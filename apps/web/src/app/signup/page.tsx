@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { AuthForm } from "@/components/AuthForm";
 import { getCurrentUser, getPostAuthPath } from "@/lib/auth";
 import { logInfo } from "@/lib/logger";
@@ -15,9 +16,14 @@ export default async function SignupPage() {
   return (
     <main className="app-shell" style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
       <div>
-        <AuthForm mode="signup" />
+        <Suspense fallback={<p style={{ color: "var(--text-muted)" }}>Loading…</p>}>
+          <AuthForm mode="signup" />
+        </Suspense>
         <p style={{ marginTop: 16, textAlign: "center", color: "var(--text-muted)" }}>
-          Already have an account? <Link href="/login" style={{ color: "var(--court-500)", fontWeight: 700 }}>Log in</Link>
+          Already have an account?{" "}
+          <Link href="/login" style={{ color: "var(--court-500)", fontWeight: 700 }}>
+            Log in
+          </Link>
         </p>
       </div>
     </main>

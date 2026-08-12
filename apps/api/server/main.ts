@@ -3,22 +3,40 @@ import { WebApp } from "meteor/webapp";
 import "../imports/api/rest/router";
 import "../imports/modules/accounts/methods";
 import "../imports/modules/venues/methods";
+import "../imports/modules/venues/rules";
 import "../imports/modules/venues/reviews";
 import "../imports/modules/bookings/methods";
 import "../imports/modules/games/methods";
 import "../imports/modules/matches/methods";
 import "../imports/modules/payments/methods";
+import "../imports/modules/notifications/methods";
 import "../imports/modules/featureFlags/methods";
 import "../imports/modules/admin/methods";
+import "../imports/modules/reports/methods";
+import "../imports/modules/groups/methods";
+import "../imports/modules/chat/methods";
+import "../imports/modules/friends/methods";
+import "../imports/modules/coaches/methods";
+import "../imports/modules/ratings/methods";
+import "../imports/modules/leagues/methods";
+import "../imports/modules/ladders/methods";
+import "../imports/modules/tournaments/methods";
+import "../imports/modules/packs/methods";
+import "../imports/modules/disputes/methods";
 import "../imports/modules/games/publications";
 import "../imports/modules/venues/publications";
 import { decideSeedOnStartup, isProdLikeRuntime } from "../imports/lib/seedPolicy";
+import { assertProdSecretsOrThrow } from "../imports/lib/prodSecrets";
 import { ensureIndexes } from "../imports/startup/indexes";
 import { seedIfNeeded } from "../imports/startup/seed";
 import { startJobs } from "../imports/startup/jobs";
 import { logInfo } from "../imports/lib/logger";
+import { logMetricSnapshot } from "../imports/lib/metrics";
 
 Meteor.startup(async () => {
+  // P1-21: fail fast before indexes/seed if prod secrets are weak.
+  assertProdSecretsOrThrow();
+
   const corsOrigins = (
     process.env.CORS_ORIGINS ||
     "http://localhost:3000,http://127.0.0.1:3000"
@@ -38,6 +56,8 @@ Meteor.startup(async () => {
     seedReason: seedDecision.reason,
     paymentProvider: process.env.PAYMENT_PROVIDER || "stub",
     paymongoConfigured: Boolean(process.env.PAYMONGO_SECRET_KEY),
+    sentryConfigured: Boolean(process.env.SENTRY_DSN),
+    alertWebhookConfigured: Boolean(process.env.ALERT_WEBHOOK_URL),
     note: "AUTH_COOKIE_SECRET and NEXT_PUBLIC_METEOR_DDP_URL are intentionally unused (P0-06)",
   });
 
@@ -54,5 +74,6 @@ Meteor.startup(async () => {
   await ensureIndexes();
   await seedIfNeeded();
   startJobs();
+  logMetricSnapshot("api.metrics.boot");
   logInfo("api.ready", { port: process.env.PORT || 3001, corsOriginsCount: corsOrigins.length });
 });

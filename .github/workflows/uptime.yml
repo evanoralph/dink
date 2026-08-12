@@ -1,0 +1,28 @@
+# P1-30: scheduled uptime probes (configure URLs via repo Variables).
+name: Uptime
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    if: ${{ vars.UPTIME_WEB_URL != '' || vars.UPTIME_API_URL != '' }}
+    steps:
+      - name: Probe web health
+        if: ${{ vars.UPTIME_WEB_URL != '' }}
+        run: |
+          set -e
+          echo "Probing ${{ vars.UPTIME_WEB_URL }}"
+          curl -fsS "${{ vars.UPTIME_WEB_URL }}" | tee /tmp/web.json
+          node -e "const j=require('/tmp/web.json'); if(!j.ok) process.exit(1)"
+
+      - name: Probe API health
+        if: ${{ vars.UPTIME_API_URL != '' }}
+        run: |
+          set -e
+          echo "Probing ${{ vars.UPTIME_API_URL }}"
+          curl -fsS "${{ vars.UPTIME_API_URL }}" | tee /tmp/api.json
+          node -e "const j=require('/tmp/api.json'); if(!j.ok) process.exit(1)"

@@ -67,23 +67,28 @@ pnpm run dev:web
 | Owner  | owner@dink.local   | Owner123!   |
 | Player | player@dink.local  | Player123!  |
 
-Seed venues: Clark Paddle Club, Pampanga Pickle Center, Helios Courts Pasig.
+Seed venues: Clark Paddle Club, Pampanga Pickle Center, The Pickle Yard Clark, Helios Courts Pasig, Ortigas Rec Courts.
 
 ## MVP loops
 
 1. Sign up → onboarding → browse `/courts` → book + stub pay → see `/bookings`
-2. Create/join game on `/play` → log score on game detail
-3. Venue owner: `/venue` calendar, courts, staff, manual booking
-4. Admin: `/admin/venues` approve + payments/bookings/flags
+2. Create/join game on `/play` → log score on game detail → share `/matches/:id/share`
+2b. Groups `/groups`, friends `/friends`, coaches `/coaches`, invite link on `/me`
+2c. Compete `/compete` — Elo rating, leagues, ladders, tournaments (stub entry fee)
+3. Venue owner: `/list-your-venue` wizard → admin approve → `/venue` calendar, courts, staff, packs, reports export
+4. Admin: `/admin/venues` approve + payments/bookings/flags + `/admin/disputes`
 
 ## Docs
 
 | Doc | Purpose |
 |-----|---------|
 | [docs/DEPLOY.md](docs/DEPLOY.md) | Staging + production deploy (Vercel, Meteor, Atlas) |
+| [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Sentry, uptime, alerts, smoke tests (P1F) |
 | [docs/GIT.md](docs/GIT.md) | Git init, secrets ignore, protect `main` |
 | [docs/MVP_ACCEPTANCE.md](docs/MVP_ACCEPTANCE.md) | **Pilot gate** — Journeys A–E + role checklist (P0-10) |
 | [docs/PRODUCTION_ROADMAP.md](docs/PRODUCTION_ROADMAP.md) | Full phased roadmap |
+| [docs/SUPPORT_PLAYBOOK.md](docs/SUPPORT_PLAYBOOK.md) | Pilot ops: onboard, tickets, reminders, load test |
+| [docs/DUPR_SPIKE.md](docs/DUPR_SPIKE.md) | P4-09: no DUPR API now; keep internal Elo |
 | [.env.example](.env.example) | Local env contract |
 | [.env.staging.example](.env.staging.example) | Staging env template |
 

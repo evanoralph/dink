@@ -3,10 +3,19 @@ import { Meteor } from "meteor/meteor";
 import { Roles } from "meteor/alanning:roles";
 import {
   AvailabilityRules,
+  CoachProfiles,
   Courts,
   FeatureFlags,
+  GroupMembers,
+  Groups,
+  LadderEntries,
+  Ladders,
+  LeagueMembers,
+  Leagues,
   PricingRules,
+  Tournaments,
   VenueMemberships,
+  VenuePacks,
   Venues,
 } from "../collections";
 import {
@@ -73,7 +82,7 @@ export async function seedIfNeeded() {
     "venue_owner",
     "player",
   ]);
-  await ensureUser(playerEmail, playerPassword, "Demo Player", ["player"]);
+  const player = await ensureUser(playerEmail, playerPassword, "Demo Player", ["player", "coach"]);
   logInfo("seed.users.ready", {
     adminEmail,
     ownerEmail,
@@ -91,7 +100,6 @@ export async function seedIfNeeded() {
       airConditioned: true,
       courtCount: 4,
       priceFrom: 500,
-      // Clark Freeport approx
       lat: 15.1859,
       lng: 120.5598,
       imageUrls: [
@@ -138,39 +146,60 @@ export async function seedIfNeeded() {
         "Metro Manila indoor club with eight courts, lockers, and coaching lanes.",
       courts: Array.from({ length: 8 }, (_, i) => `Court ${i + 1}`),
     },
+    // P2-09: extra pilot-city inventory (idempotent by name).
+    {
+      name: "The Pickle Yard Clark",
+      city: "Angeles City",
+      address: "M.A. Roxas Hwy, Clark Freeport",
+      indoor: false,
+      covered: true,
+      airConditioned: false,
+      courtCount: 4,
+      priceFrom: 400,
+      lat: 15.176,
+      lng: 120.53,
+      imageUrls: ["https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=1200&q=80"],
+      description: "Covered Clark courts for evening open play and walk-in doubles.",
+      courts: ["Yard 1", "Yard 2", "Yard 3", "Yard 4"],
+    },
+    {
+      name: "Ortigas Rec Courts",
+      city: "Pasig",
+      address: "Ortigas Center, Pasig",
+      indoor: true,
+      covered: true,
+      airConditioned: true,
+      courtCount: 3,
+      priceFrom: 650,
+      lat: 14.586,
+      lng: 121.061,
+      imageUrls: ["https://images.unsplash.com/photo-1518611012118-696072aa579a?w=1200&q=80"],
+      description: "CBD indoor courts — after-work slots and weekend round robins.",
+      courts: ["Rec 1", "Rec 2", "Rec 3"],
+    },
   ];
-
-  // Backfill listing fields on existing seed venues (safe no-op if already set).
-  for (const sample of samples) {
-    const venue = await Venues.findOneAsync({ name: sample.name });
-    if (!venue?._id) continue;
-    const $set: Record<string, unknown> = { updatedAt: new Date() };
-    if (!venue.location) {
-      $set.location = {
-        type: "Point",
-        coordinates: [sample.lng, sample.lat],
-      };
-    }
-    if (!venue.imageUrls?.length) $set.imageUrls = sample.imageUrls;
-    if (!venue.description || venue.description.includes("seed venue for Dink MVP")) {
-      $set.description = sample.description;
-    }
-    if (venue.ratingAvg === undefined) $set.ratingAvg = 0;
-    if (venue.ratingCount === undefined) $set.ratingCount = 0;
-    if (Object.keys($set).length > 1) {
-      await Venues.updateAsync(venue._id, { $set });
-      logInfo("seed.venue.backfill", { venueId: venue._id, name: sample.name });
-    }
-  }
-
-  const existing = await Venues.find().countAsync();
-  if (existing > 0) {
-    logInfo("seed.venues.exists", { count: existing });
-    return;
-  }
 
   const now = new Date();
   for (const sample of samples) {
+    const existingVenue = await Venues.findOneAsync({ name: sample.name });
+    if (existingVenue?._id) {
+      const $set: Record<string, unknown> = { updatedAt: new Date() };
+      if (!existingVenue.location) {
+        $set.location = { type: "Point", coordinates: [sample.lng, sample.lat] };
+      }
+      if (!existingVenue.imageUrls?.length) $set.imageUrls = sample.imageUrls;
+      if (!existingVenue.description || existingVenue.description.includes("seed venue for Dink MVP")) {
+        $set.description = sample.description;
+      }
+      if (existingVenue.ratingAvg === undefined) $set.ratingAvg = 0;
+      if (existingVenue.ratingCount === undefined) $set.ratingCount = 0;
+      if (Object.keys($set).length > 1) {
+        await Venues.updateAsync(existingVenue._id, { $set });
+        logInfo("seed.venue.backfill", { venueId: existingVenue._id, name: sample.name });
+      }
+      continue;
+    }
+
     const venueId = await Venues.insertAsync({
       name: sample.name,
       city: sample.city,
@@ -234,16 +263,140 @@ export async function seedIfNeeded() {
       });
     }
 
-    logInfo("seed.venue.created", { venueId, name: sample.name });
+    logInfo("seed.venue.created", { venueId, name: sample.name, city: sample.city });
   }
 
-  // Marketing flags: compete/coaching stay disabled until product ships (P0-03 / P0-04).
+  if (player._id && !player.profile?.inviteCode) {
+    await Meteor.users.updateAsync(player._id, {
+      $set: { "profile.inviteCode": "DEMO01", "profile.inviteCount": 0 },
+    });
+  }
+
+  const groupName = "Clark Lunch Bunch";
+  let group = await Groups.findOneAsync({ name: groupName });
+  if (!group && player._id) {
+    const groupId = await Groups.insertAsync({
+      name: groupName,
+      city: "Angeles City",
+      description: "Weekday open play near Clark. Bring a paddle.",
+      creatorUserId: player._id,
+      visibility: "public",
+      memberCount: 1,
+      createdAt: now,
+    });
+    await GroupMembers.insertAsync({
+      groupId,
+      userId: player._id,
+      role: "owner",
+      status: "joined",
+      joinedAt: now,
+    });
+    group = await Groups.findOneAsync(groupId);
+    logInfo("seed.group.created", { groupId, name: groupName });
+  }
+
+  if (player._id && typeof player.profile?.rating !== "number") {
+    await Meteor.users.updateAsync(player._id, { $set: { "profile.rating": 1000 } });
+  }
+
+  if (player._id && !(await Leagues.findOneAsync({ name: "Angeles Weeknight League" }))) {
+    const leagueId = await Leagues.insertAsync({
+      name: "Angeles Weeknight League",
+      city: "Angeles City",
+      seasonName: "Pilot Season",
+      format: "doubles",
+      status: "open",
+      creatorUserId: player._id,
+      createdAt: now,
+    });
+    await LeagueMembers.insertAsync({
+      leagueId,
+      userId: player._id,
+      wins: 0,
+      losses: 0,
+      draws: 0,
+      points: 0,
+      joinedAt: now,
+    });
+    logInfo("seed.league.created", { leagueId });
+  }
+
+  if (player._id && !(await Ladders.findOneAsync({ name: "Clark Ladder" }))) {
+    const ladderId = await Ladders.insertAsync({
+      name: "Clark Ladder",
+      city: "Angeles City",
+      creatorUserId: player._id,
+      createdAt: now,
+    });
+    await LadderEntries.insertAsync({
+      ladderId,
+      userId: player._id,
+      rank: 1,
+      wins: 0,
+      losses: 0,
+      joinedAt: now,
+    });
+    logInfo("seed.ladder.created", { ladderId });
+  }
+
+  if (player._id && !(await Tournaments.findOneAsync({ name: "Sunday Showdown" }))) {
+    const tournamentId = await Tournaments.insertAsync({
+      name: "Sunday Showdown",
+      city: "Angeles City",
+      startsAt: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000),
+      entryFee: 0,
+      currency: "PHP",
+      format: "single_elim",
+      capacity: 8,
+      status: "open",
+      creatorUserId: player._id,
+      createdAt: now,
+    });
+    logInfo("seed.tournament.created", { tournamentId });
+  }
+
+  const firstVenue = await Venues.findOneAsync({ name: "Clark Paddle Club" });
+  if (firstVenue?._id && !(await VenuePacks.findOneAsync({ venueId: firstVenue._id, name: "Weeknight Pass" }))) {
+    await VenuePacks.insertAsync({
+      venueId: firstVenue._id,
+      name: "Weeknight Pass",
+      price: 1500,
+      currency: "PHP",
+      discountPct: 20,
+      durationDays: 30,
+      visitsIncluded: 8,
+      active: true,
+      createdAt: now,
+    });
+    logInfo("seed.pack.created", { venueId: firstVenue._id });
+  }
+
+  if (player._id) {
+    await CoachProfiles.upsertAsync(
+      { userId: player._id },
+      {
+        $set: {
+          userId: player._id,
+          city: "Angeles City",
+          bio: "Demo coach — third-shot drops and doubles positioning.",
+          hourlyRate: 800,
+          currency: "PHP",
+          active: true,
+          updatedAt: now,
+        },
+        $setOnInsert: { ratingAvg: 0, ratingCount: 0, createdAt: now },
+      },
+    );
+    logInfo("seed.coach.upsert", { userId: player._id });
+  }
+
+  // Marketing flags: compete + coaching on for local/demo seed.
   const flags = [
     { key: "payments_stub", enabled: true, description: "Use stub payment provider" },
     { key: "show_pricing", enabled: true, description: "Marketing pricing section" },
     { key: "show_testimonials", enabled: true, description: "Marketing testimonials" },
-    { key: "show_compete", enabled: false, description: "Marketing leagues/compete section (unshipped)" },
-    { key: "show_coaching", enabled: false, description: "Marketing coaching section (unshipped)" },
+    { key: "show_compete", enabled: true, description: "Marketing leagues/compete section (P4)" },
+    { key: "show_coaching", enabled: true, description: "Marketing coaching section (P3)" },
   ];
   for (const flag of flags) {
     await FeatureFlags.upsertAsync(

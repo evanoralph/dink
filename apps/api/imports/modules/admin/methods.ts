@@ -518,6 +518,8 @@ Meteor.methods({
       await Bookings.updateAsync(input.bookingId, {
         $set: { status: input.status, updatedAt: new Date() },
       });
+      const { applyBookingReliability } = await import("../../lib/reliability");
+      await applyBookingReliability(input.bookingId, input.status, before.status);
       const after = await Bookings.findOneAsync(input.bookingId);
       await writeAdminAudit({
         actorUserId: actorId,
@@ -613,19 +615,33 @@ Meteor.methods({
         },
       });
       if (input.status === "refunded") {
-        await Bookings.updateAsync(before.bookingId, {
-          $set: { status: "cancelled", updatedAt: new Date() },
-        });
-        await BookingParticipants.updateAsync(
-          { bookingId: before.bookingId },
-          { $set: { paymentStatus: "refunded" } },
-          { multi: true },
-        );
+        if (before.bookingId) {
+          await Bookings.updateAsync(before.bookingId, {
+            $set: { status: "cancelled", updatedAt: new Date() },
+          });
+          await BookingParticipants.updateAsync(
+            { bookingId: before.bookingId },
+            { $set: { paymentStatus: "refunded" } },
+            { multi: true },
+          );
+        } else {
+          logInfo("admin.payments.setStatus.no_booking", {
+            paymentId: input.paymentId,
+            kind: before.metadata?.kind || "non_booking",
+          });
+        }
       }
       if (input.status === "void") {
-        await Bookings.updateAsync(before.bookingId, {
-          $set: { status: "cancelled", updatedAt: new Date() },
-        });
+        if (before.bookingId) {
+          await Bookings.updateAsync(before.bookingId, {
+            $set: { status: "cancelled", updatedAt: new Date() },
+          });
+        } else {
+          logInfo("admin.payments.setStatus.void_no_booking", {
+            paymentId: input.paymentId,
+            kind: before.metadata?.kind || "non_booking",
+          });
+        }
       }
       const after = await Payments.findOneAsync(input.paymentId);
       await writeAdminAudit({

@@ -4,11 +4,22 @@ export const signupSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   displayName: z.string().min(2).max(80),
+  inviteCode: z.string().min(4).max(16).optional(),
 });
 
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+});
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(20),
+  password: z.string().min(8),
+  email: z.string().email(),
 });
 
 export const profileUpdateSchema = z.object({
@@ -81,6 +92,7 @@ export const createGameSchema = z.object({
   capacity: z.number().int().min(2).max(8).default(4),
   pricePerPlayer: z.number().min(0).optional(),
   visibility: z.enum(["public", "invite"]).default("public"),
+  groupId: z.string().min(1).optional(),
 });
 
 export const matchResultSchema = z.object({

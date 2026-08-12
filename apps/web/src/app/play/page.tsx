@@ -40,6 +40,14 @@ export default async function PlayPage() {
               </Link>
             ))}
             {games.length === 0 && <p className="card" style={{ padding: 20 }}>No open games yet. Create one.</p>}
+            <p style={{ marginTop: 8, display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <Link href="/games/join" style={{ color: "var(--court-500)", fontWeight: 700 }}>
+                Have an invite code?
+              </Link>
+              <Link href="/groups" style={{ color: "var(--court-500)", fontWeight: 700 }}>
+                Groups & open play
+              </Link>
+            </p>
           </div>
           {user ? <CreateGameForm venues={venues} /> : (
             <div className="card" style={{ padding: 20 }}>

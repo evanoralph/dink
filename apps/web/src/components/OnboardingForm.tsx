@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { clientApiFetch } from "@/lib/api-client";
+import { track } from "@/lib/analytics";
 import { logInfo } from "@/lib/logger";
 
 export function OnboardingForm() {
@@ -19,6 +20,7 @@ export function OnboardingForm() {
         body: { city, skillLevel, onboardingComplete: true },
       });
       logInfo("onboarding.complete", { city, skillLevel });
+      track("onboarding_completed", { city, skillLevel });
       router.push("/play");
       router.refresh();
     } catch (err) {

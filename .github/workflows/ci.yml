@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   web:
-    name: Web lint + build
+    name: Web lint + build + e2e smoke
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -41,6 +41,18 @@ jobs:
           NEXT_PUBLIC_APP_URL: http://localhost:3000
           AUTH_COOKIE_NAME: dink_auth_token
 
+      - name: Install Playwright Chromium
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: Playwright UI smoke
+        run: pnpm test:e2e
+        env:
+          CI: "1"
+          E2E_WEB_PORT: "3100"
+          METEOR_API_URL: http://localhost:3001
+          NEXT_PUBLIC_APP_URL: http://127.0.0.1:3100
+          AUTH_COOKIE_NAME: dink_auth_token
+
   api-smoke:
     name: API smoke (seed policy + files)
     runs-on: ubuntu-latest
@@ -55,3 +67,21 @@ jobs:
 
       - name: API smoke
         run: node scripts/ci-api-smoke.mjs
+
+  # Optional staging journey (enable repo secret METEOR_API_URL_STAGING)
+  journey-staging:
+    name: Staging API journey (optional)
+    runs-on: ubuntu-latest
+    if: ${{ vars.RUN_STAGING_JOURNEY == 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Journey
+        run: node scripts/e2e-journey.mjs
+        env:
+          REQUIRE_E2E_JOURNEY: "1"
+          METEOR_API_URL: ${{ secrets.METEOR_API_URL_STAGING }}

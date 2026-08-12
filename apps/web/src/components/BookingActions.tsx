@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clientApiFetch } from "@/lib/api-client";
+import { track } from "@/lib/analytics";
 import { logDebug, logInfo } from "@/lib/logger";
 
 type Slot = {
@@ -77,6 +78,7 @@ export function BookingActions({
         },
       });
       logInfo("booking.created", { bookingId: booking._id });
+      track("booking_started", { bookingId: booking._id, venueId });
 
       const checkout = await clientApiFetch<CheckoutResult>(`/bookings/${booking._id}/checkout`, {
         method: "POST",
@@ -86,6 +88,11 @@ export function BookingActions({
         bookingId: checkout.booking._id,
         mode: checkout.mode,
         status: checkout.payment.status,
+        provider: paymentProvider,
+      });
+      track("booking_payment_started", {
+        bookingId: checkout.booking._id,
+        mode: checkout.mode,
         provider: paymentProvider,
       });
 

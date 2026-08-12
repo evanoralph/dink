@@ -16,7 +16,7 @@ import { logInfo } from "@/lib/logger";
 
 type Payment = {
   _id: string;
-  bookingId: string;
+  bookingId?: string;
   userId: string;
   provider: string;
   amount: number;
@@ -81,7 +81,9 @@ export default async function VenuePaymentsPage({
           {
             key: "booking",
             header: "Booking",
-            render: (p) => <span className="admin-mono">{p.bookingId.slice(0, 10)}…</span>,
+            render: (p) => (
+              <span className="admin-mono">{p.bookingId ? `${p.bookingId.slice(0, 10)}…` : "—"}</span>
+            ),
           },
           {
             key: "amount",

@@ -14,7 +14,10 @@
     "build:web": "pnpm --filter web build",
     "lint:web": "pnpm --filter web lint",
     "smoke:api": "node scripts/ci-api-smoke.mjs",
-    "ci": "pnpm lint:web && pnpm build:web && pnpm smoke:api"
+    "smoke:journey": "node scripts/e2e-journey.mjs",
+    "load:bookings": "node scripts/load-test-bookings.mjs",
+    "test:e2e": "pnpm --filter web test:e2e",
+    "ci": "pnpm lint:web && pnpm build:web && pnpm smoke:api && pnpm test:e2e"
   },
   "engines": {
     "node": ">=20"

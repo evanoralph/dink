@@ -5,7 +5,10 @@ import { WebApp } from "meteor/webapp";
 import type { IncomingMessage, ServerResponse } from "http";
 import { resolveUserFromRequest } from "../../lib/auth";
 import { logError, logInfo } from "../../lib/logger";
+import { getMetrics } from "../../lib/metrics";
+import { assertRateLimit, clientKeyFromReq } from "../../lib/rateLimit";
 import { runWithUserId } from "../../lib/requestContext";
+import { captureException } from "../../lib/sentry";
 
 type Req = IncomingMessage & { body?: unknown; url?: string; rawBody?: string };
 type Res = ServerResponse;
@@ -66,6 +69,8 @@ async function handler(req: Req, res: Res) {
         service: "dink-api",
         mongo: Boolean(process.env.MONGO_URL),
         time: new Date().toISOString(),
+        // P1-33: conflict counter for uptime/alert dashboards
+        metrics: getMetrics(),
       });
       return true;
     }
@@ -83,15 +88,45 @@ async function handler(req: Req, res: Res) {
     }
 
     if (method === "POST" && url.pathname === "/api/v1/auth/signup") {
+      // P1-20: slow signup spam
+      assertRateLimit({
+        key: `signup:${clientKeyFromReq(req)}`,
+        limit: 10,
+        windowMs: 15 * 60_000,
+      });
       send(res, 200, await Meteor.callAsync("auth.signup", body));
       return true;
     }
     if (method === "POST" && url.pathname === "/api/v1/auth/login") {
+      assertRateLimit({
+        key: `login:${clientKeyFromReq(req)}`,
+        limit: 20,
+        windowMs: 15 * 60_000,
+      });
       send(res, 200, await Meteor.callAsync("auth.login", body));
       return true;
     }
     if (method === "POST" && url.pathname === "/api/v1/auth/logout") {
-      send(res, 200, await run("auth.logout"));
+      // P1-16: revoke the resume token that authenticated this request
+      send(res, 200, await run("auth.logout", auth?.token));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/auth/forgot-password") {
+      assertRateLimit({
+        key: `forgot:${clientKeyFromReq(req)}`,
+        limit: 5,
+        windowMs: 15 * 60_000,
+      });
+      send(res, 200, await Meteor.callAsync("auth.forgotPassword", body));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/auth/reset-password") {
+      assertRateLimit({
+        key: `reset:${clientKeyFromReq(req)}`,
+        limit: 10,
+        windowMs: 15 * 60_000,
+      });
+      send(res, 200, await Meteor.callAsync("auth.resetPassword", body));
       return true;
     }
     if (method === "GET" && url.pathname === "/api/v1/me") {
@@ -100,6 +135,14 @@ async function handler(req: Req, res: Res) {
     }
     if (method === "PATCH" && url.pathname === "/api/v1/me/profile") {
       send(res, 200, await run("me.updateProfile", body));
+      return true;
+    }
+    if (method === "GET" && url.pathname === "/api/v1/me/export") {
+      send(res, 200, await run("me.export"));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/me/delete") {
+      send(res, 200, await run("me.delete", body));
       return true;
     }
 
@@ -158,6 +201,11 @@ async function handler(req: Req, res: Res) {
       send(res, 200, await run("venues.create", body));
       return true;
     }
+    const venuePacksPublic = url.pathname.match(/^\/api\/v1\/venues\/([^/]+)\/packs$/);
+    if (method === "GET" && venuePacksPublic) {
+      send(res, 200, await run("packs.list", venuePacksPublic[1]));
+      return true;
+    }
     const availMatch = url.pathname.match(/^\/api\/v1\/venues\/([^/]+)\/availability$/);
     if (method === "GET" && availMatch) {
       const date = url.searchParams.get("date") || new Date().toISOString().slice(0, 10);
@@ -198,6 +246,11 @@ async function handler(req: Req, res: Res) {
       send(res, 200, await run("bookings.create", body));
       return true;
     }
+    // Must be registered before /bookings/:id
+    if (method === "GET" && url.pathname === "/api/v1/bookings/cancel-policy") {
+      send(res, 200, await run("bookings.cancelPolicy"));
+      return true;
+    }
     const bookingMatch = url.pathname.match(/^\/api\/v1\/bookings\/([^/]+)$/);
     if (method === "GET" && bookingMatch) {
       send(res, 200, await run("bookings.get", bookingMatch[1]));
@@ -205,6 +258,11 @@ async function handler(req: Req, res: Res) {
     }
     const checkoutMatch = url.pathname.match(/^\/api\/v1\/bookings\/([^/]+)\/checkout$/);
     if (method === "POST" && checkoutMatch) {
+      assertRateLimit({
+        key: `checkout:${userId || clientKeyFromReq(req)}`,
+        limit: 30,
+        windowMs: 15 * 60_000,
+      });
       send(
         res,
         200,
@@ -220,22 +278,65 @@ async function handler(req: Req, res: Res) {
       send(res, 200, await run("bookings.cancel", cancelMatch[1]));
       return true;
     }
+    const inviteMatch = url.pathname.match(/^\/api\/v1\/bookings\/([^/]+)\/invite$/);
+    if (method === "POST" && inviteMatch) {
+      send(
+        res,
+        200,
+        await run("bookings.invite", { ...(body as object), bookingId: inviteMatch[1] }),
+      );
+      return true;
+    }
+    const remindMatch = url.pathname.match(/^\/api\/v1\/bookings\/([^/]+)\/remind$/);
+    if (method === "POST" && remindMatch) {
+      send(res, 200, await run("bookings.remindUnpaid", { bookingId: remindMatch[1] }));
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/v1/notifications") {
+      send(
+        res,
+        200,
+        await run("notifications.list", {
+          limit: url.searchParams.get("limit")
+            ? Number(url.searchParams.get("limit"))
+            : undefined,
+          unreadOnly: url.searchParams.get("unreadOnly") === "true",
+        }),
+      );
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/notifications/read") {
+      send(res, 200, await run("notifications.markRead", body));
+      return true;
+    }
     if (method === "POST" && url.pathname === "/api/v1/bookings/manual") {
       send(res, 200, await run("bookings.manual", body));
       return true;
     }
 
     if (method === "GET" && url.pathname === "/api/v1/games") {
-      const filters: { city?: string; skill?: number } = {};
+      const filters: { city?: string; skill?: number; groupId?: string } = {};
       const city = url.searchParams.get("city");
       const skill = url.searchParams.get("skill");
+      const groupId = url.searchParams.get("groupId");
       if (city) filters.city = city;
       if (skill) filters.skill = Number(skill);
+      if (groupId) filters.groupId = groupId;
       send(res, 200, await run("games.list", filters));
       return true;
     }
     if (method === "POST" && url.pathname === "/api/v1/games") {
       send(res, 200, await run("games.create", body));
+      return true;
+    }
+    // P1-23: join by invite code (before /games/:id)
+    if (method === "POST" && url.pathname === "/api/v1/games/join-by-code") {
+      const code =
+        typeof body === "object" && body && "code" in body
+          ? String((body as { code: unknown }).code)
+          : "";
+      send(res, 200, await run("games.joinByCode", code));
       return true;
     }
     const gameMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)$/);
@@ -253,14 +354,268 @@ async function handler(req: Req, res: Res) {
       send(res, 200, await run("games.leave", leaveMatch[1]));
       return true;
     }
+    const playAgainMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/play-again$/);
+    if (method === "POST" && playAgainMatch) {
+      send(res, 200, await run("games.playAgain", playAgainMatch[1]));
+      return true;
+    }
+    const rsvpMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/rsvp$/);
+    if (method === "POST" && rsvpMatch) {
+      send(
+        res,
+        200,
+        await run("games.rsvp", { ...(body as object), gameId: rsvpMatch[1] }),
+      );
+      return true;
+    }
+    const repeatMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/repeat-weekly$/);
+    if (method === "POST" && repeatMatch) {
+      send(res, 200, await run("games.repeatWeekly", repeatMatch[1]));
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/v1/groups") {
+      const city = url.searchParams.get("city") || undefined;
+      send(res, 200, await run("groups.list", city ? { city } : {}));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/groups") {
+      send(res, 200, await run("groups.create", body));
+      return true;
+    }
+    const groupFeed = url.pathname.match(/^\/api\/v1\/groups\/([^/]+)\/feed$/);
+    if (method === "GET" && groupFeed) {
+      send(res, 200, await run("groups.feed", groupFeed[1]));
+      return true;
+    }
+    const groupJoin = url.pathname.match(/^\/api\/v1\/groups\/([^/]+)\/join$/);
+    if (method === "POST" && groupJoin) {
+      send(res, 200, await run("groups.join", groupJoin[1]));
+      return true;
+    }
+    const groupLeave = url.pathname.match(/^\/api\/v1\/groups\/([^/]+)\/leave$/);
+    if (method === "POST" && groupLeave) {
+      send(res, 200, await run("groups.leave", groupLeave[1]));
+      return true;
+    }
+    const groupGet = url.pathname.match(/^\/api\/v1\/groups\/([^/]+)$/);
+    if (method === "GET" && groupGet) {
+      send(res, 200, await run("groups.get", groupGet[1]));
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/v1/chat") {
+      send(
+        res,
+        200,
+        await run("chat.list", {
+          channelType: url.searchParams.get("channelType"),
+          channelId: url.searchParams.get("channelId"),
+          after: url.searchParams.get("after") || undefined,
+        }),
+      );
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/chat") {
+      assertRateLimit({
+        key: `chat:${userId || clientKeyFromReq(req)}`,
+        limit: 40,
+        windowMs: 60_000,
+      });
+      send(res, 200, await run("chat.post", body));
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/v1/friends") {
+      send(res, 200, await run("friends.list"));
+      return true;
+    }
+    if (method === "GET" && url.pathname === "/api/v1/friends/played-with") {
+      send(res, 200, await run("friends.playedWith"));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/friends/request") {
+      send(res, 200, await run("friends.request", (body as { userId?: string }).userId));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/friends/accept") {
+      send(res, 200, await run("friends.accept", (body as { userId?: string }).userId));
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/v1/coaches") {
+      const city = url.searchParams.get("city") || undefined;
+      send(res, 200, await run("coaches.list", city ? { city } : {}));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/coaches/profile") {
+      send(res, 200, await run("coaches.upsertProfile", body));
+      return true;
+    }
+    if (method === "GET" && url.pathname === "/api/v1/coaches/requests") {
+      send(res, 200, await run("coaches.myRequests"));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/coaches/requests") {
+      send(res, 200, await run("coaches.request", body));
+      return true;
+    }
+    const coachRespond = url.pathname.match(/^\/api\/v1\/coaches\/requests\/([^/]+)\/respond$/);
+    if (method === "POST" && coachRespond) {
+      send(
+        res,
+        200,
+        await run("coaches.respond", { ...(body as object), requestId: coachRespond[1] }),
+      );
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/coaches/reviews") {
+      send(res, 200, await run("coaches.review", body));
+      return true;
+    }
+    const coachGet = url.pathname.match(/^\/api\/v1\/coaches\/([^/]+)$/);
+    if (method === "GET" && coachGet) {
+      send(res, 200, await run("coaches.get", coachGet[1]));
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/v1/ratings/rules") {
+      send(res, 200, await Meteor.callAsync("ratings.rules"));
+      return true;
+    }
+    if (method === "GET" && url.pathname === "/api/v1/ratings/me") {
+      send(res, 200, await run("ratings.me"));
+      return true;
+    }
+    if (method === "GET" && url.pathname === "/api/v1/ratings/history") {
+      send(res, 200, await run("ratings.history", { userId: url.searchParams.get("userId") || undefined }));
+      return true;
+    }
+    if (method === "GET" && url.pathname === "/api/v1/ratings/leaderboard") {
+      const city = url.searchParams.get("city") || undefined;
+      send(res, 200, await run("ratings.leaderboard", city ? { city } : {}));
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/v1/leagues") {
+      const city = url.searchParams.get("city") || undefined;
+      send(res, 200, await run("leagues.list", city ? { city } : {}));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/leagues") {
+      send(res, 200, await run("leagues.create", body));
+      return true;
+    }
+    const leagueJoin = url.pathname.match(/^\/api\/v1\/leagues\/([^/]+)\/join$/);
+    if (method === "POST" && leagueJoin) {
+      send(res, 200, await run("leagues.join", leagueJoin[1]));
+      return true;
+    }
+    const leagueResult = url.pathname.match(/^\/api\/v1\/leagues\/([^/]+)\/results$/);
+    if (method === "POST" && leagueResult) {
+      send(res, 200, await run("leagues.recordResult", { ...(body as object), leagueId: leagueResult[1] }));
+      return true;
+    }
+    const leagueGet = url.pathname.match(/^\/api\/v1\/leagues\/([^/]+)$/);
+    if (method === "GET" && leagueGet) {
+      send(res, 200, await run("leagues.get", leagueGet[1]));
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/v1/ladders") {
+      const city = url.searchParams.get("city") || undefined;
+      send(res, 200, await run("ladders.list", city ? { city } : {}));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/ladders") {
+      send(res, 200, await run("ladders.create", body));
+      return true;
+    }
+    const ladderJoin = url.pathname.match(/^\/api\/v1\/ladders\/([^/]+)\/join$/);
+    if (method === "POST" && ladderJoin) {
+      send(res, 200, await run("ladders.join", ladderJoin[1]));
+      return true;
+    }
+    const ladderChallenge = url.pathname.match(/^\/api\/v1\/ladders\/([^/]+)\/challenge$/);
+    if (method === "POST" && ladderChallenge) {
+      send(res, 200, await run("ladders.challenge", { ...(body as object), ladderId: ladderChallenge[1] }));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/ladders/challenges/respond") {
+      send(res, 200, await run("ladders.respond", body));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/ladders/challenges/result") {
+      send(res, 200, await run("ladders.recordResult", body));
+      return true;
+    }
+    const ladderGet = url.pathname.match(/^\/api\/v1\/ladders\/([^/]+)$/);
+    if (method === "GET" && ladderGet) {
+      send(res, 200, await run("ladders.get", ladderGet[1]));
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/v1/tournaments") {
+      const city = url.searchParams.get("city") || undefined;
+      send(res, 200, await run("tournaments.list", city ? { city } : {}));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/tournaments") {
+      send(res, 200, await run("tournaments.create", body));
+      return true;
+    }
+    const tReg = url.pathname.match(/^\/api\/v1\/tournaments\/([^/]+)\/register$/);
+    if (method === "POST" && tReg) {
+      send(res, 200, await run("tournaments.register", tReg[1]));
+      return true;
+    }
+    const tStart = url.pathname.match(/^\/api\/v1\/tournaments\/([^/]+)\/start$/);
+    if (method === "POST" && tStart) {
+      send(res, 200, await run("tournaments.start", tStart[1]));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/tournaments/matches/winner") {
+      send(res, 200, await run("tournaments.reportWinner", body));
+      return true;
+    }
+    const tGet = url.pathname.match(/^\/api\/v1\/tournaments\/([^/]+)$/);
+    if (method === "GET" && tGet) {
+      send(res, 200, await run("tournaments.get", tGet[1]));
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/v1/me/passes") {
+      send(res, 200, await run("packs.mine"));
+      return true;
+    }
+
+    if (method === "POST" && url.pathname === "/api/v1/reports") {
+      assertRateLimit({
+        key: `report:${userId || clientKeyFromReq(req)}`,
+        limit: 10,
+        windowMs: 15 * 60_000,
+      });
+      send(res, 200, await run("reports.create", body));
+      return true;
+    }
 
     if (method === "POST" && url.pathname === "/api/v1/matches") {
       send(res, 200, await run("matches.submitResult", body));
       return true;
     }
+    const shareMatch = url.pathname.match(/^\/api\/v1\/matches\/([^/]+)\/share$/);
+    if (method === "GET" && shareMatch) {
+      send(res, 200, await Meteor.callAsync("matches.share", shareMatch[1]));
+      return true;
+    }
     const confirmMatch = url.pathname.match(/^\/api\/v1\/matches\/([^/]+)\/confirm$/);
     if (method === "POST" && confirmMatch) {
       send(res, 200, await run("matches.confirm", confirmMatch[1]));
+      return true;
+    }
+    const disputeMatch = url.pathname.match(/^\/api\/v1\/matches\/([^/]+)\/dispute$/);
+    if (method === "POST" && disputeMatch) {
+      send(res, 200, await run("matches.dispute", { ...(body as object), matchId: disputeMatch[1] }));
       return true;
     }
     if (method === "GET" && url.pathname === "/api/v1/matches") {
@@ -314,6 +669,53 @@ async function handler(req: Req, res: Res) {
       send(res, 200, await run("venue.courts.setActive", body));
       return true;
     }
+
+    if (method === "POST" && url.pathname === "/api/v1/venue/onboard-defaults") {
+      send(res, 200, await run("venues.applyOnboardDefaults", body));
+      return true;
+    }
+
+    // P1-12 / P1-13 / P1-15 — hours, pricing, blackouts
+    if (method === "GET" && url.pathname === "/api/v1/venue/availability-rules") {
+      send(res, 200, await run("venue.availabilityRules.list", venueQuery));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/venue/availability-rules") {
+      send(res, 200, await run("venue.availabilityRules.upsert", body));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/venue/availability-rules/remove") {
+      send(res, 200, await run("venue.availabilityRules.remove", (body as { ruleId: string }).ruleId));
+      return true;
+    }
+    if (method === "GET" && url.pathname === "/api/v1/venue/pricing-rules") {
+      send(res, 200, await run("venue.pricingRules.list", venueQuery));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/venue/pricing-rules") {
+      send(res, 200, await run("venue.pricingRules.upsert", body));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/venue/pricing-rules/remove") {
+      send(res, 200, await run("venue.pricingRules.remove", (body as { ruleId: string }).ruleId));
+      return true;
+    }
+    if (method === "GET" && url.pathname === "/api/v1/venue/blackouts") {
+      send(res, 200, await run("venue.blackouts.list", venueQuery));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/venue/blackouts") {
+      send(res, 200, await run("venue.blackouts.create", body));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/venue/blackouts/remove") {
+      send(
+        res,
+        200,
+        await run("venue.blackouts.remove", (body as { blackoutId: string }).blackoutId),
+      );
+      return true;
+    }
     if (method === "GET" && url.pathname === "/api/v1/venue/bookings") {
       send(res, 200, await run("venue.bookings.list", venueQuery));
       return true;
@@ -328,6 +730,28 @@ async function handler(req: Req, res: Res) {
     }
     if (method === "GET" && url.pathname === "/api/v1/venue/reports") {
       send(res, 200, await run("venue.reports.summary", venueQuery));
+      return true;
+    }
+    if (method === "GET" && url.pathname === "/api/v1/venue/reports/export") {
+      send(res, 200, await run("venue.reports.export", venueQuery));
+      return true;
+    }
+    if (method === "GET" && url.pathname === "/api/v1/venue/packs") {
+      const venueId = url.searchParams.get("venueId");
+      if (!venueId) {
+        send(res, 400, { error: "venueId required" });
+        return true;
+      }
+      send(res, 200, await run("packs.list", venueId));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/venue/packs") {
+      send(res, 200, await run("packs.create", body));
+      return true;
+    }
+    const packBuy = url.pathname.match(/^\/api\/v1\/venue\/packs\/([^/]+)\/buy$/);
+    if (method === "POST" && packBuy) {
+      send(res, 200, await run("packs.buy", packBuy[1]));
       return true;
     }
     if (method === "GET" && url.pathname === "/api/v1/venue/staff") {
@@ -422,6 +846,22 @@ async function handler(req: Req, res: Res) {
       send(res, 200, await run("admin.audit.list", adminQuery));
       return true;
     }
+    if (method === "GET" && url.pathname === "/api/v1/admin/moderation") {
+      send(res, 200, await run("admin.moderation.list", adminQuery));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/admin/moderation/resolve") {
+      send(res, 200, await run("admin.moderation.resolve", body));
+      return true;
+    }
+    if (method === "GET" && url.pathname === "/api/v1/admin/disputes") {
+      send(res, 200, await run("admin.disputes.list", adminQuery));
+      return true;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/admin/disputes/resolve") {
+      send(res, 200, await run("admin.disputes.resolve", body));
+      return true;
+    }
     if (method === "GET" && url.pathname === "/api/v1/admin/feature-flags") {
       send(res, 200, await run("admin.featureFlags.list"));
       return true;
@@ -441,14 +881,25 @@ async function handler(req: Req, res: Res) {
       reason: err.reason || err.message,
       durationMs: Date.now() - started,
     });
+    // Unexpected server errors → Sentry (skip expected client errors)
+    if (
+      !err.error ||
+      !["not-authorized", "invalid-credentials", "forbidden", "not-found", "invalid-body", "rate-limited", "slot-taken", "invalid-token"].includes(
+        err.error,
+      )
+    ) {
+      void captureException(error, { path: url.pathname, code: err.error });
+    }
     const status =
       err.error === "not-authorized" || err.error === "invalid-credentials"
         ? 401
-        : err.error === "forbidden"
+        : err.error === "suspended" || err.error === "forbidden"
           ? 403
           : err.error === "not-found"
             ? 404
-            : 400;
+            : err.error === "rate-limited"
+              ? 429
+              : 400;
     send(res, status, {
       error: err.error || "error",
       message: err.reason || err.message || "Request failed",

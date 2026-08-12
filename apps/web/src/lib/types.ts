@@ -14,6 +14,15 @@ export interface PublicUser {
     city?: string;
     skillLevel?: number;
     onboardingComplete?: boolean;
+    reliabilityScore?: number;
+    reliabilityLevel?: "new" | "reliable" | "highly_reliable";
+    reliabilityCompleted?: number;
+    reliabilityNoShows?: number;
+    suspended?: boolean;
+    inviteCode?: string;
+    inviteCount?: number;
+    invitedBy?: string;
+    rating?: number;
   };
   roles: Role[];
 }
@@ -97,4 +106,31 @@ export interface Game {
   pricePerPlayer?: number;
   status: string;
   inviteCode: string;
+  waitlistCount?: number;
+  groupId?: string;
+  seriesId?: string;
+}
+
+export interface Group {
+  _id: string;
+  name: string;
+  city: string;
+  description?: string;
+  creatorUserId: string;
+  visibility: string;
+  memberCount: number;
+  createdAt: string;
+}
+
+export interface CoachProfile {
+  _id: string;
+  userId: string;
+  city: string;
+  bio?: string;
+  hourlyRate: number;
+  currency: string;
+  active: boolean;
+  ratingAvg: number;
+  ratingCount: number;
+  displayName?: string;
 }

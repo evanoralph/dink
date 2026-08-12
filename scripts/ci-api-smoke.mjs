@@ -29,6 +29,43 @@ const requiredFiles = [
   "apps/api/imports/modules/payments/providers/index.ts",
   "apps/api/imports/modules/payments/webhookSecurity.ts",
   "apps/api/imports/modules/payments/providers/refunds.ts",
+  "apps/api/imports/modules/notifications/service.ts",
+  "apps/api/imports/modules/notifications/methods.ts",
+  "apps/api/imports/lib/cancelPolicy.ts",
+  "apps/api/imports/modules/venues/rules.ts",
+  "apps/api/imports/lib/prodSecrets.ts",
+  "apps/api/imports/lib/rateLimit.ts",
+  "apps/api/imports/lib/sentry.ts",
+  "apps/api/imports/lib/metrics.ts",
+  "apps/api/imports/lib/alerts.ts",
+  "apps/api/imports/lib/splitPay.ts",
+  "apps/api/imports/lib/reliability.ts",
+  "apps/api/imports/modules/reports/methods.ts",
+  "apps/api/imports/lib/analytics.ts",
+  "apps/api/imports/startup/indexes.ts",
+  "apps/api/imports/startup/jobs.ts",
+  "apps/web/src/app/list-your-venue/page.tsx",
+  "apps/web/src/components/venue/VenueOnboardWizard.tsx",
+  "docs/SUPPORT_PLAYBOOK.md",
+  "scripts/load-test-bookings.mjs",
+  "apps/api/imports/modules/groups/methods.ts",
+  "apps/api/imports/modules/chat/methods.ts",
+  "apps/api/imports/modules/friends/methods.ts",
+  "apps/api/imports/modules/coaches/methods.ts",
+  "apps/web/src/app/groups/page.tsx",
+  "apps/web/src/app/coaches/page.tsx",
+  "apps/web/src/app/friends/page.tsx",
+  "apps/web/src/app/matches/[id]/share/page.tsx",
+  "apps/api/imports/modules/ratings/methods.ts",
+  "apps/api/imports/modules/leagues/methods.ts",
+  "apps/api/imports/modules/ladders/methods.ts",
+  "apps/api/imports/modules/tournaments/methods.ts",
+  "apps/api/imports/modules/packs/methods.ts",
+  "apps/api/imports/modules/disputes/methods.ts",
+  "apps/web/src/app/compete/page.tsx",
+  "apps/web/src/app/venue/packs/page.tsx",
+  "apps/web/src/app/admin/disputes/page.tsx",
+  "docs/DUPR_SPIKE.md",
   "apps/api/tsconfig.json",
 ];
 
@@ -127,7 +164,78 @@ assertEqual(
   "allow_custom_passwords",
 );
 
+const indexesSrc = fs.readFileSync(path.join(root, "apps/api/imports/startup/indexes.ts"), "utf8");
+if (!indexesSrc.includes("bookings_active_slot") || !indexesSrc.includes("pending_payment")) {
+  fail("missing_active_slot_index");
+}
+
+const jobsSrc = fs.readFileSync(path.join(root, "apps/api/imports/startup/jobs.ts"), "utf8");
+if (!jobsSrc.includes("jobs.remindBooking") || !jobsSrc.includes("TWILIO_ACCOUNT_SID")) {
+  fail("missing_reminder_job");
+}
+
+const venuesSrc = fs.readFileSync(path.join(root, "apps/api/imports/modules/venues/methods.ts"), "utf8");
+if (!venuesSrc.includes("venues.applyOnboardDefaults") || !venuesSrc.includes("venue_owner")) {
+  fail("missing_venue_onboard_wizard_api");
+}
+
+if (!seedSrc.includes("The Pickle Yard Clark") || !seedSrc.includes("Ortigas Rec Courts")) {
+  fail("missing_pilot_seed_venues");
+}
+
+const groupsSrc = fs.readFileSync(path.join(root, "apps/api/imports/modules/groups/methods.ts"), "utf8");
+if (!groupsSrc.includes("groups.create") || !groupsSrc.includes("groups.join")) {
+  fail("missing_groups_methods");
+}
+
+const coachesSrc = fs.readFileSync(path.join(root, "apps/api/imports/modules/coaches/methods.ts"), "utf8");
+if (!coachesSrc.includes("coaches.request") || !coachesSrc.includes("coaches.review")) {
+  fail("missing_coaches_methods");
+}
+
+const gamesSrc = fs.readFileSync(path.join(root, "apps/api/imports/modules/games/methods.ts"), "utf8");
+if (!gamesSrc.includes("waitlist") || !gamesSrc.includes("games.repeatWeekly")) {
+  fail("missing_open_play_waitlist");
+}
+
+const ratingsSrc = fs.readFileSync(path.join(root, "apps/api/imports/modules/ratings/methods.ts"), "utf8");
+if (!ratingsSrc.includes("ratings.history") || !ratingsSrc.includes("ratings.leaderboard")) {
+  fail("missing_ratings_methods");
+}
+
+const leaguesSrc = fs.readFileSync(path.join(root, "apps/api/imports/modules/leagues/methods.ts"), "utf8");
+if (!leaguesSrc.includes("leagues.create") || !leaguesSrc.includes("leagues.recordResult")) {
+  fail("missing_leagues_methods");
+}
+
+const tournamentsSrc = fs.readFileSync(path.join(root, "apps/api/imports/modules/tournaments/methods.ts"), "utf8");
+if (!tournamentsSrc.includes("tournaments.register") || !tournamentsSrc.includes("tournaments.reportWinner")) {
+  fail("missing_tournaments_methods");
+}
+
+const packsSrc = fs.readFileSync(path.join(root, "apps/api/imports/modules/packs/methods.ts"), "utf8");
+if (!packsSrc.includes("packs.buy") || !packsSrc.includes("packs.create")) {
+  fail("missing_packs_methods");
+}
+
+const disputesSrc = fs.readFileSync(path.join(root, "apps/api/imports/modules/disputes/methods.ts"), "utf8");
+if (!disputesSrc.includes("matches.dispute") || !disputesSrc.includes("admin.disputes.resolve")) {
+  fail("missing_disputes_methods");
+}
+
+if (!seedSrc.includes("show_compete") || !seedSrc.includes("Weeknight Pass")) {
+  fail("missing_compete_seed");
+}
+
+const venuesReportsSrc = fs.readFileSync(path.join(root, "apps/api/imports/modules/venues/methods.ts"), "utf8");
+if (!venuesReportsSrc.includes("venue.reports.export") || !venuesReportsSrc.includes("utilizationPct")) {
+  fail("missing_venue_report_export");
+}
+
 log("ci.api.smoke.ok", {
   filesChecked: requiredFiles.length,
   policyAssertions: 6,
+  phase2Markers: ["bookings_active_slot", "remindBooking", "applyOnboardDefaults", "pilot_seed"],
+  phase3Markers: ["groups.create", "coaches.request", "waitlist", "repeatWeekly"],
+  phase4Markers: ["ratings.history", "leagues.create", "tournaments.register", "packs.buy", "matches.dispute", "venue.reports.export"],
 });

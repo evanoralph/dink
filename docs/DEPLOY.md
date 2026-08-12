@@ -5,6 +5,7 @@ Also see:
 - Git / branch protection: [GIT.md](./GIT.md)
 - Staging env template: [../.env.staging.example](../.env.staging.example)
 - MVP acceptance (pilot gate): [MVP_ACCEPTANCE.md](./MVP_ACCEPTANCE.md)
+- Observability (Sentry / uptime / alerts): [OBSERVABILITY.md](./OBSERVABILITY.md)
 
 ## 0) Staging first (P0-09)
 
@@ -166,9 +167,17 @@ curl -X POST http://localhost:3001/api/v1/payments/webhook \
 
 ### Failure / expire / refund (P1-04 / P1-05)
 
-- Unpaid `pending_payment` bookings expire ~15 minutes after create (job every 60s) → status `expired`, pending payments → `failed`, slot freed.
+- Unpaid `pending_payment` bookings expire after `BOOKING_HOLD_MINUTES` (default 15, min 5; job every 60s) → status `expired`, pending payments → `failed`, slot freed. Concurrent creates on the same court+start return `slot-taken` (`bookings_active_slot` unique index).
 - Player `/bookings` shows **Pay now / Retry payment** while pending; **Book again** after expire.
 - Admin **Refund** on a PayMongo `paid` payment calls PayMongo Refunds API (`pay_…` id from webhook), cancels booking, writes audit. Stub paid payments refund locally only.
+
+## 5b) Auth hardening (P1-16…P1-21)
+
+- Logout: Next `/api/auth/logout` calls Meteor `POST /api/v1/auth/logout` with Bearer token, then clears cookie (resume token revoked).
+- Password reset: `POST /api/v1/auth/forgot-password` + `/reset-password`; emails via `MAIL_URL` / `MAIL_FROM`. Without `MAIL_URL`, API logs `auth.forgotPassword.dev_link` (link redacted in production).
+- Reset links use `APP_URL` (fallback `ROOT_WEB_URL` / `http://localhost:3000`).
+- Rate limits (in-memory, per IP): login/signup/forgot/reset/checkout.
+- Prod-like boot (`NODE_ENV=production` or `https` `ROOT_URL`) fails if webhook secret is weak, PayMongo missing secret when selected, or seed uses default passwords with `SEED_ON_STARTUP=true`.
 
 ## 6) Seed policy (P0-07) — required in prod / shared envs
 
@@ -197,12 +206,63 @@ Local Docker/dev may keep `SEED_ON_STARTUP=true` with the demo passwords.
 2. `GET https://api…/api/v1/health`
 3. `GET https://www…/api/health`
 4. Sign up → book court → stub checkout → create game → submit score
-5. Owner login → venue calendar
+5. Owner: `/list-your-venue` wizard (or seed owner) → venue calendar; admin approves pending venues
 6. Admin login → approve venue / view payments
-7. Confirm demo seed emails are not usable with default passwords (or do not exist)
+7. Ops: [SUPPORT_PLAYBOOK.md](./SUPPORT_PLAYBOOK.md) + optional `node scripts/load-test-bookings.mjs`
+8. Confirm demo seed emails are not usable with default passwords (or do not exist)
 
 ## Rollback
 
 - Vercel: promote previous deployment
 - Meteor: redeploy previous bundle
 - Atlas: no schema migrations required for MVP (document model)
+
+## 8) Staging → production promote (P1-32)
+
+Do **not** promote until staging smoke is green and [MVP_ACCEPTANCE.md](./MVP_ACCEPTANCE.md) gates for Phase 1 pass.
+
+### Pre-promote checklist
+
+1. Staging API logs: `seed.skipped` (`prod_default_off` or `explicit_false`)
+2. Staging: `SEED_ON_STARTUP=false` permanently
+3. Staging PayMongo sandbox journey (or stub) + email (`MAIL_URL`) verified
+4. Staging uptime checks green for 24h (or at least consecutive smoke runs)
+5. Sentry DSNs configured on staging (optional but recommended) — see [OBSERVABILITY.md](./OBSERVABILITY.md)
+6. `ALERT_WEBHOOK_URL` pointed at ops Slack channel
+7. Rotate any temporary seed passwords; confirm demo accounts cannot use `Admin123!` defaults
+
+### Promote steps
+
+1. **Atlas**: create/use prod DB `dink` (not staging). New user or scoped credentials.
+2. **Meteor prod env** (copy from staging, change URLs/secrets):
+
+```text
+ROOT_URL=https://api.yourdomain.com
+MONGO_URL=mongodb+srv://…/dink?…
+SEED_ON_STARTUP=false
+PAYMENT_PROVIDER=paymongo   # or stub for soft launch
+PAYMONGO_SECRET_KEY=sk_live_…   # live when ready
+PAYMENT_WEBHOOK_SECRET=<unique-strong-≥16>
+PAYMONGO_WEBHOOK_SECRET=<same-or-dashboard-secret>
+CORS_ORIGINS=https://www.yourdomain.com,https://yourdomain.com
+APP_URL=https://www.yourdomain.com
+MAIL_URL=…
+MAIL_FROM=Dink <noreply@yourdomain.com>
+SENTRY_DSN=…
+SENTRY_ENVIRONMENT=production
+ALERT_WEBHOOK_URL=…
+DEBUG=0
+```
+
+3. Deploy Meteor bundle; confirm boot logs `prodSecrets.ok` and `seed.skipped`.
+4. PayMongo Dashboard: live webhook → `https://api…/api/v1/payments/webhook`
+5. **Vercel Production** env: `METEOR_API_URL`, `NEXT_PUBLIC_APP_URL`, optional `NEXT_PUBLIC_SENTRY_DSN`
+6. Promote/deploy web; DNS cutover for `www` / apex
+7. Post-deploy smoke (section 7) + `REQUIRE_E2E_JOURNEY=1 METEOR_API_URL=https://api… node scripts/e2e-journey.mjs` if seed/demo data allows (or manual journey)
+8. Watch Slack alerts + Sentry for 1 hour after cutover
+
+### Hard rules
+
+- Never enable `SEED_ON_STARTUP=true` on production after bootstrap
+- Never reuse staging `PAYMENT_WEBHOOK_SECRET` / PayMongo keys on prod
+- Rollback = previous Vercel deployment + previous Meteor bundle (section Rollback)

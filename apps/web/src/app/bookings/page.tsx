@@ -1,10 +1,17 @@
 import { AppNav } from "@/components/AppNav";
+import { BookingCancelButton } from "@/components/BookingCancelButton";
 import { BookingPaymentActions } from "@/components/BookingPaymentActions";
 import { apiFetch } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import type { Booking } from "@/lib/types";
 import Link from "next/link";
 import { logInfo } from "@/lib/logger";
+
+type CancelPolicy = {
+  unpaid: string;
+  confirmed: string;
+  tooLate: string;
+};
 
 export default async function BookingsPage({
   searchParams,
@@ -28,8 +35,14 @@ export default async function BookingsPage({
   }
 
   let bookings: Booking[] = [];
+  let policy: CancelPolicy | null = null;
   try {
-    bookings = await apiFetch<Booking[]>("/api/v1/bookings");
+    const [list, cancelPolicy] = await Promise.all([
+      apiFetch<Booking[]>("/api/v1/bookings"),
+      apiFetch<CancelPolicy>("/api/v1/bookings/cancel-policy"),
+    ]);
+    bookings = list;
+    policy = cancelPolicy;
     logInfo("page.bookings", {
       count: bookings.length,
       paid: params.paid || null,
@@ -50,6 +63,12 @@ export default async function BookingsPage({
         <h1 className="display" style={{ margin: "12px 0 28px" }}>
           Bookings
         </h1>
+
+        {policy && (
+          <p className="card" style={{ padding: 16, marginBottom: 16, color: "var(--text-muted)" }}>
+            Cancel policy: {policy.unpaid} {policy.confirmed}
+          </p>
+        )}
 
         {params.paid === "1" && (
           <p className="card" style={{ padding: 16, marginBottom: 16 }}>
@@ -76,7 +95,9 @@ export default async function BookingsPage({
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                <strong>{new Date(b.startsAt).toLocaleString()}</strong>
+                <Link href={`/bookings/${b._id}`} style={{ fontWeight: 700 }}>
+                  {new Date(b.startsAt).toLocaleString()}
+                </Link>
                 <span
                   style={{
                     textTransform: "uppercase",
@@ -107,6 +128,17 @@ export default async function BookingsPage({
                 venueId={b.venueId}
                 status={b.status}
                 latestPayment={b.latestPayment}
+              />
+              <BookingCancelButton
+                bookingId={b._id}
+                status={b.status}
+                policyHint={
+                  b.status === "pending_payment"
+                    ? policy?.unpaid
+                    : b.status === "confirmed"
+                      ? policy?.confirmed
+                      : undefined
+                }
               />
             </div>
           ))}

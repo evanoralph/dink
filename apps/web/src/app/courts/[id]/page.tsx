@@ -1,13 +1,17 @@
+import Link from "next/link";
 import { AppNav } from "@/components/AppNav";
 import { BookingActions } from "@/components/BookingActions";
+import { BuyPackButton } from "@/components/BuyPackButton";
 import { VenueDetailMap } from "@/components/courts/VenueDetailMap";
 import { VenueRating } from "@/components/courts/VenueRating";
 import { VenueReviewForm } from "@/components/courts/VenueReviewForm";
+import { ReportButton } from "@/components/ReportButton";
 import { apiFetch } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { getPublicFeatureFlags } from "@/lib/feature-flags";
 import { getPaymentConfig } from "@/lib/payments";
 import type { Court, Venue, VenueReview } from "@/lib/types";
+import { track } from "@/lib/analytics";
 import { logInfo } from "@/lib/logger";
 
 export default async function CourtDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -27,6 +31,21 @@ export default async function CourtDetailPage({ params }: { params: Promise<{ id
       currency: string;
     }>;
   }>(`/api/v1/venues/${id}/availability?date=${date}`);
+
+  type Pack = {
+    _id: string;
+    name: string;
+    price: number;
+    discountPct: number;
+    durationDays: number;
+    visitsIncluded?: number;
+  };
+  let packs: Pack[] = [];
+  try {
+    packs = await apiFetch<Pack[]>(`/api/v1/venues/${id}/packs`);
+  } catch {
+    packs = [];
+  }
 
   let reviews: VenueReview[] = [];
   let ratingAvg = detail.venue.ratingAvg ?? 0;
@@ -56,11 +75,13 @@ export default async function CourtDetailPage({ params }: { params: Promise<{ id
     venueId: id,
     slots: availability.slots.length,
     reviews: reviews.length,
+    packs: packs.length,
     images: detail.venue.imageUrls?.length || 0,
     paymentsStub: flags.payments_stub,
     paymentProvider: paymentConfig.provider,
     redirectCheckout: paymentConfig.redirectCheckout,
   });
+  track("venue_viewed", { venueId: id, city: detail.venue.city, userId: user?._id });
 
   return (
     <>
@@ -108,6 +129,32 @@ export default async function CourtDetailPage({ params }: { params: Promise<{ id
           redirectCheckout={paymentConfig.redirectCheckout}
         />
 
+        {packs.length > 0 && (
+          <div className="card" style={{ padding: 20, marginTop: 24 }}>
+            <strong>Membership packs</strong>
+            <p style={{ color: "var(--text-muted)", margin: "8px 0 12px" }}>
+              Active pass = discount at booking. Stub checkout confirms instantly.
+            </p>
+            <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 10 }}>
+              {packs.map((p) => (
+                <li key={p._id} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <span>
+                    {p.name} · ₱{p.price} · {p.discountPct}% off · {p.durationDays} days
+                    {p.visitsIncluded ? ` · ${p.visitsIncluded} visits` : ""}
+                  </span>
+                  {user ? (
+                    <BuyPackButton packId={p._id} label={`Buy ${p.name}`} />
+                  ) : (
+                    <Link href={`/login?next=/courts/${id}`} style={{ color: "var(--court-500)", fontWeight: 700 }}>
+                      Log in to buy
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <h2
           style={{
             margin: "36px 0 8px",
@@ -134,13 +181,23 @@ export default async function CourtDetailPage({ params }: { params: Promise<{ id
                 {review.comment && (
                   <p style={{ margin: "8px 0 0", color: "var(--text-muted)" }}>{review.comment}</p>
                 )}
+                {user && (
+                  <div style={{ marginTop: 10 }}>
+                    <ReportButton targetType="review" targetId={review._id} label="Report review" />
+                  </div>
+                )}
               </article>
             ))
           )}
         </div>
 
         {user ? (
-          <VenueReviewForm venueId={id} />
+          <>
+            <VenueReviewForm venueId={id} />
+            <div style={{ marginTop: 12 }}>
+              <ReportButton targetType="venue" targetId={id} label="Report venue" />
+            </div>
+          </>
         ) : (
           <p className="card" style={{ padding: 16, color: "var(--text-muted)", marginBottom: 28 }}>
             Sign in to leave a review after booking.

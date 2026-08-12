@@ -317,34 +317,34 @@ Goal: Prove PRD MVP loop with real money path and confirmations. Aligns with PRD
 
 | ID | Area | Task | Done when |
 |----|------|------|-----------|
-| P1-16 | API | Revoke resume tokens on logout; Next calls API logout | Stolen cookie useless after logout |
-| P1-17 | API/Web | Forgot + reset password email flow | User recovers account |
-| P1-18 | API/Web | Enforce `@dink/shared` Zod on auth + booking + game payloads | Invalid bodies 400 |
-| P1-19 | Web | `middleware.ts` for protected route prefixes | Unauth redirected consistently |
-| P1-20 | API | Rate limit login/signup/checkout | Brute force slowed |
-| P1-21 | Ops | Prod secret policy: no default webhook/seed passwords | Startup fails if insecure in prod |
+| P1-16 | API | Revoke resume tokens on logout; Next calls API logout | ✅ Stolen cookie useless after logout |
+| P1-17 | API/Web | Forgot + reset password email flow | ✅ User recovers account |
+| P1-18 | API/Web | Enforce `@dink/shared` Zod on auth + booking + game payloads | ✅ Invalid bodies 400 |
+| P1-19 | Web | `middleware.ts` for protected route prefixes | ✅ Unauth redirected consistently |
+| P1-20 | API | Rate limit login/signup/checkout | ✅ Brute force slowed |
+| P1-21 | Ops | Prod secret policy: no default webhook/seed passwords | ✅ Startup fails if insecure in prod |
 
 #### 1E — Finish half-built play loop
 
 | ID | Area | Task | Done when |
 |----|------|------|-----------|
-| P1-22 | Web | Leave game control | Player can leave open game |
-| P1-23 | Web/API | Join by invite code (deep link `/games/join?code=`) | Second user joins without listing |
-| P1-24 | Web | Match confirm UI for opponents | Confirm flips match state |
-| P1-25 | API/Web | Expose `games.playAgain` on REST + button | New game created from completed |
-| P1-26 | Web | Fix match team IDs (no `"unknown"`) | Only real user ids submitted |
-| P1-27 | Web | Create-game form: editable skill/capacity/price | Not hardwired defaults only |
+| P1-22 | Web | Leave game control | ✅ Player can leave open game |
+| P1-23 | Web/API | Join by invite code (deep link `/games/join?code=`) | ✅ Second user joins without listing |
+| P1-24 | Web | Match confirm UI for opponents | ✅ Confirm flips match state |
+| P1-25 | API/Web | Expose `games.playAgain` on REST + button | ✅ New game created from completed |
+| P1-26 | Web | Fix match team IDs (no `"unknown"`) | ✅ Only real user ids submitted |
+| P1-27 | Web | Create-game form: editable skill/capacity/price | ✅ Not hardwired defaults only |
 
 #### 1F — Observability, quality, deploy
 
 | ID | Area | Task | Done when |
 |----|------|------|-----------|
-| P1-28 | Ops | Sentry (or equivalent) on web + API | Errors searchable |
-| P1-29 | Web | `error.tsx` / `global-error.tsx` | Friendly failure UI |
-| P1-30 | Ops | Uptime checks on health endpoints + payment alert channel | Pager/Slack on down/fail spike |
-| P1-31 | Ops | Playwright (or similar) smoke: signup→book→pay(sandbox)→game→score | CI gate |
-| P1-32 | Ops | Complete staging→prod promote steps; disable seed | DEPLOY.md post-deploy checklist green |
-| P1-33 | API | Booking conflict metrics / log alerts | Double-book attempts visible |
+| P1-28 | Ops | Sentry (or equivalent) on web + API | ✅ Errors searchable |
+| P1-29 | Web | `error.tsx` / `global-error.tsx` | ✅ Friendly failure UI |
+| P1-30 | Ops | Uptime checks on health endpoints + payment alert channel | ✅ Pager/Slack on down/fail spike |
+| P1-31 | Ops | Playwright (or similar) smoke: signup→book→pay(sandbox)→game→score | ✅ CI gate |
+| P1-32 | Ops | Complete staging→prod promote steps; disable seed | ✅ DEPLOY.md post-deploy checklist green |
+| P1-33 | API | Booking conflict metrics / log alerts | ✅ Double-book attempts visible |
 
 **Phase 1 exit:** Journeys A–E pass on staging with sandbox PSP + email. Ready for closed pilot with real venues.
 
@@ -356,18 +356,18 @@ Goal: Raise completion and trust for Angeles/Clark or Metro Manila pilot. Aligns
 
 | ID | Area | Task | Done when |
 |----|------|------|-----------|
-| P2-01 | API/Web | Split pay: each participant pays `paymentShare` | Booking confirms when all required paid (policy) |
-| P2-02 | API/Web | Invite-to-pay links / reminders for unpaid shares | Organizer sees who paid |
-| P2-03 | API/Web | Game lobby coordination v1 (minimal chat **or** structured RSVP + notify) | Players coordinate in-app |
-| P2-04 | API | Reliability / no-show signals from completes vs cancels | Score stored on profile |
-| P2-05 | Admin | Moderation queue: report user/venue/review | Admin can hide + suspend |
-| P2-06 | API/Web | Account deletion + minimal data export | Privacy path works |
-| P2-07 | Web/API | Venue onboarding wizard (courts → hours → pricing → submit) | New venue live without eng help |
-| P2-08 | Web | SMS or push reminder before booking/game (optional second channel) | Reminder delivered |
-| P2-09 | Ops | Support playbook + seed real court inventory for pilot city | Ops can onboard N venues |
-| P2-10 | Ops | Load test availability + booking under peak | No slot corruption under load |
-| P2-11 | Product | Instrument analytics events (PRD §51 subset) | Funnel visible in dashboard/tool |
-| P2-12 | API | Temporary slot hold during checkout (PRD §48) | Concurrent checkouts don’t clash |
+| P2-01 | API/Web | Split pay: each participant pays `paymentShare` | ✅ Booking confirms when all required paid (policy) |
+| P2-02 | API/Web | Invite-to-pay links / reminders for unpaid shares | ✅ Organizer sees who paid |
+| P2-03 | API/Web | Game lobby coordination v1 (minimal chat **or** structured RSVP + notify) | ✅ Players coordinate in-app |
+| P2-04 | API | Reliability / no-show signals from completes vs cancels | ✅ Score stored on profile |
+| P2-05 | Admin | Moderation queue: report user/venue/review | ✅ Admin can hide + suspend |
+| P2-06 | API/Web | Account deletion + minimal data export | ✅ Privacy path works |
+| P2-07 | Web/API | Venue onboarding wizard (courts → hours → pricing → submit) | ✅ New venue live without eng help |
+| P2-08 | Web | SMS or push reminder before booking/game (optional second channel) | ✅ Reminder delivered |
+| P2-09 | Ops | Support playbook + seed real court inventory for pilot city | ✅ Ops can onboard N venues |
+| P2-10 | Ops | Load test availability + booking under peak | ✅ No slot corruption under load |
+| P2-11 | Product | Instrument analytics events (PRD §51 subset) | ✅ Funnel visible in dashboard/tool |
+| P2-12 | API | Temporary slot hold during checkout (PRD §48) | ✅ Concurrent checkouts don’t clash |
 
 **Phase 2 exit:** Pilot metrics: booking completion, game fill rate, no-shows, venue staff workload (PRD §60 Phase 5).
 
@@ -379,16 +379,16 @@ Goal: Increase repeat sessions via social graph and open play.
 
 | ID | Area | Task | Done when |
 |----|------|------|-----------|
-| P3-01 | API/Web | Groups / communities CRUD + membership | Users join local groups |
-| P3-02 | API/Web | Group feed of open plays / games | Group can post recurring open play |
-| P3-03 | API/Web | Enhanced chat (game + group channels) | Realtime or near-realtime messages |
-| P3-04 | API/Web | Friends / follow + “players you play with” | Social graph queryable |
-| P3-05 | API/Web | Open-play management for organizers | Recurring sessions + waitlist |
-| P3-06 | API/Web | Coaching discovery v1 (real coach profiles, not static cards) | Search coaches by city |
-| P3-07 | API/Web | Coach booking request (manual confirm OK) | Player requests session |
-| P3-08 | Web | Richer match history + share card | Shareable result link |
-| P3-09 | Product | Invite growth loop (Loop A): reward or UX for invites | Measurable invite→signup |
-| P3-10 | Web | Reviews for coaches (after sessions) | Ratings on coach profile |
+| P3-01 | API/Web | Groups / communities CRUD + membership | ✅ Users join local groups |
+| P3-02 | API/Web | Group feed of open plays / games | ✅ Group can post recurring open play |
+| P3-03 | API/Web | Enhanced chat (game + group channels) | ✅ Realtime or near-realtime messages |
+| P3-04 | API/Web | Friends / follow + “players you play with” | ✅ Social graph queryable |
+| P3-05 | API/Web | Open-play management for organizers | ✅ Recurring sessions + waitlist |
+| P3-06 | API/Web | Coaching discovery v1 (real coach profiles, not static cards) | ✅ Search coaches by city |
+| P3-07 | API/Web | Coach booking request (manual confirm OK) | ✅ Player requests session |
+| P3-08 | Web | Richer match history + share card | ✅ Shareable result link |
+| P3-09 | Product | Invite growth loop (Loop A): reward or UX for invites | ✅ Measurable invite→signup |
+| P3-10 | Web | Reviews for coaches (after sessions) | ✅ Ratings on coach profile |
 
 **Phase 3 exit:** Repeat play up; organizers run weekly open play inside Dink.
 
@@ -400,15 +400,15 @@ Goal: Become infrastructure for organized play.
 
 | ID | Area | Task | Done when |
 |----|------|------|-----------|
-| P4-01 | API | Ratings v1 (post-match updates; transparent rules) | Rating history on profile |
-| P4-02 | API/Web | Leagues: seasons, standings, schedule | League page live |
-| P4-03 | API/Web | Ladders: challenge / accept / result | Ladder ranks update |
-| P4-04 | API/Web | Tournament registration + payments | Player registers + pays |
-| P4-05 | API/Web | Basic bracket / round-robin engine | Bracket advances from results |
-| P4-06 | Web/API | Advanced venue reports (utilization, GMV, peak) | Owner exports useful CSV/PDF |
-| P4-07 | API/Web | Memberships / packs for venues | Member price applied at booking |
-| P4-08 | Admin | Competition moderation + dispute tools | Admin resolves score disputes |
-| P4-09 | Product | Optional DUPR export/import research spike | Decision doc only |
+| P4-01 | API | Ratings v1 (post-match updates; transparent rules) | ✅ Rating history on profile |
+| P4-02 | API/Web | Leagues: seasons, standings, schedule | ✅ League page live |
+| P4-03 | API/Web | Ladders: challenge / accept / result | ✅ Ladder ranks update |
+| P4-04 | API/Web | Tournament registration + payments | ✅ Player registers + pays |
+| P4-05 | API/Web | Basic bracket / round-robin engine | ✅ Bracket advances from results |
+| P4-06 | Web/API | Advanced venue reports (utilization, GMV, peak) | ✅ Owner exports useful CSV/PDF |
+| P4-07 | API/Web | Memberships / packs for venues | ✅ Member price applied at booking |
+| P4-08 | Admin | Competition moderation + dispute tools | ✅ Admin resolves score disputes |
+| P4-09 | Product | Optional DUPR export/import research spike | ✅ Decision doc only |
 
 **Phase 4 exit:** A local league or small tournament runs fully on Dink.
 

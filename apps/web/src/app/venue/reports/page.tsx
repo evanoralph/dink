@@ -10,6 +10,7 @@ import {
   formatMoney,
   type AdminSearchParams,
 } from "@/lib/admin";
+import { VenueReportExport } from "@/components/venue/VenueReportExport";
 import { logInfo } from "@/lib/logger";
 
 type ReportSummary = {
@@ -23,6 +24,11 @@ type ReportSummary = {
     gmv: number;
     refundedAmount: number;
     revenueConfirmed: number;
+    bookedHours?: number;
+    availableHours?: number;
+    utilizationPct?: number;
+    peakHour?: number;
+    peakCount?: number;
   };
   byStatus: { status: string; count: number }[];
   series: { date: string; bookings: number; revenue: number }[];
@@ -52,6 +58,9 @@ export default async function VenueReportsPage({
             {formatDate(data.from)} → {formatDate(data.to)}
           </p>
         </div>
+        <Suspense>
+          <VenueReportExport />
+        </Suspense>
       </div>
 
       <ModuleTip>
@@ -92,6 +101,16 @@ export default async function VenueReportsPage({
             label: "Refunded",
             value: formatMoney(data.totals.refundedAmount),
           },
+          {
+            label: "Utilization",
+            value: `${data.totals.utilizationPct ?? 0}%`,
+            hint: `${data.totals.bookedHours ?? 0}h booked / ${data.totals.availableHours ?? 0}h open`,
+          },
+          {
+            label: "Peak hour (UTC)",
+            value: `${String(data.totals.peakHour ?? 0).padStart(2, "0")}:00`,
+            hint: `${data.totals.peakCount ?? 0} confirmed starts`,
+          },
         ]}
       />
 
@@ -130,6 +149,7 @@ export default async function VenueReportsPage({
           )}
         </div>
       </div>
+      <style>{`@media print { .admin-filters, .admin-page-header button, .admin-sidebar, .admin-topbar { display: none !important; } }`}</style>
     </>
   );
 }

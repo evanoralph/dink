@@ -53,9 +53,14 @@ export default async function VenueDashboardPage() {
             {formatDate(data.from)} → {formatDate(data.to)}
           </p>
         </div>
-        <Link href="/venue/reports" className="btn-secondary" style={{ height: 36, padding: "0 14px" }}>
-          Open reports
-        </Link>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Link href="/list-your-venue" className="btn-secondary" style={{ height: 36, padding: "0 14px" }}>
+            List another venue
+          </Link>
+          <Link href="/venue/reports" className="btn-secondary" style={{ height: 36, padding: "0 14px" }}>
+            Open reports
+          </Link>
+        </div>
       </div>
 
       <ModuleTip>
@@ -156,7 +161,12 @@ export default async function VenueDashboardPage() {
       <div className="admin-panel" style={{ marginTop: 16 }}>
         <h2>Your venues</h2>
         {data.venues.length === 0 ? (
-          <p className="admin-muted">No venues linked to this account</p>
+          <p className="admin-muted">
+            No venues linked to this account.{" "}
+            <Link href="/list-your-venue" style={{ fontWeight: 700 }}>
+              List your venue
+            </Link>
+          </p>
         ) : (
           <div style={{ display: "grid", gap: 8 }}>
             {data.venues.map((v) => (

@@ -1,8 +1,11 @@
 import { check, Match } from "meteor/check";
 import { Meteor } from "meteor/meteor";
-import { BookingParticipants, Bookings, Payments } from "../../collections";
+import { Bookings, Payments } from "../../collections";
 import { isFeatureEnabled } from "../../lib/featureFlags";
+import { sendOpsAlert } from "../../lib/alerts";
 import { withMethodLog, logInfo, logWarn } from "../../lib/logger";
+import { incrMetric } from "../../lib/metrics";
+import { applyParticipantPaid } from "../../lib/splitPay";
 import { getPublicPaymentConfig } from "./providers";
 import { parsePaymongoWebhookEvent } from "./providers/paymongo";
 import { verifyStubWebhookSecret } from "./webhookSecurity";
@@ -27,15 +30,13 @@ async function markPaid(paymentId: string, bookingId: string, providerPaymentId?
         : {}),
     },
   });
-  await BookingParticipants.updateAsync(
-    { bookingId },
-    { $set: { paymentStatus: "paid" } },
-    { multi: true },
-  );
-  await Bookings.updateAsync(bookingId, {
-    $set: { status: "confirmed", updatedAt: now },
-    $unset: { expiresAt: 1 },
-  });
+
+  const payerId = existing?.userId;
+  if (payerId) {
+    await applyParticipantPaid(bookingId, payerId);
+  } else {
+    logWarn("payments.markPaid.no_user", { paymentId, bookingId });
+  }
 }
 
 async function markFailed(paymentId: string, bookingId: string) {
@@ -43,6 +44,11 @@ async function markFailed(paymentId: string, bookingId: string) {
   await Payments.updateAsync(paymentId, {
     $set: { status: "failed", updatedAt: now },
   });
+  const booking = await Bookings.findOneAsync(bookingId);
+  if (booking?.status === "confirmed") {
+    logInfo("payments.markFailed.keep_confirmed", { paymentId, bookingId });
+    return;
+  }
   await Bookings.updateAsync(bookingId, {
     $set: { status: "pending_payment", updatedAt: now },
   });
@@ -143,6 +149,18 @@ Meteor.methods({
           await markPaid(payment._id!, payment.bookingId, parsed.paymentId || payment.providerPaymentId);
         } else if (parsed.status === "failed") {
           await markFailed(payment._id!, payment.bookingId);
+          const failCount = incrMetric("payments.webhook.failed");
+          logWarn("payments.webhook.failed.alert", {
+            paymentId: payment._id,
+            bookingId: payment.bookingId,
+            failCount,
+          });
+          void sendOpsAlert("Payment webhook failed", {
+            paymentId: payment._id,
+            bookingId: payment.bookingId,
+            provider: "paymongo",
+            failCount,
+          });
         } else {
           logInfo("payments.webhook.ignored_type", { type: parsed.type, eventId });
         }
@@ -183,6 +201,18 @@ Meteor.methods({
       }
       if (input.status === "failed") {
         await markFailed(payment._id!, payment.bookingId);
+        const failCount = incrMetric("payments.webhook.failed");
+        logWarn("payments.webhook.failed.alert", {
+          paymentId: payment._id,
+          bookingId: payment.bookingId,
+          failCount,
+        });
+        void sendOpsAlert("Payment webhook failed", {
+          paymentId: payment._id,
+          bookingId: payment.bookingId,
+          provider: "stub",
+          failCount,
+        });
       }
 
       logInfo("payments.webhook.ok", {

@@ -5,7 +5,7 @@ import { requireUserId, userHasRole } from "../../lib/auth";
 import { withMethodLog, logInfo, logDebug } from "../../lib/logger";
 
 async function recomputeVenueRating(venueId: string) {
-  const reviews = await VenueReviews.find({ venueId }).fetchAsync();
+  const reviews = await VenueReviews.find({ venueId, hidden: { $ne: true } }).fetchAsync();
   const ratingCount = reviews.length;
   const ratingAvg =
     ratingCount === 0
@@ -33,8 +33,9 @@ Meteor.methods({
         throw new Meteor.Error("not-found", "Venue not found");
       }
 
+      const isAdmin = await userHasRole(this.userId || "", "admin");
       const reviews = await VenueReviews.find(
-        { venueId },
+        isAdmin ? { venueId } : { venueId, hidden: { $ne: true } },
         { sort: { createdAt: -1 }, limit: 50 },
       ).fetchAsync();
 

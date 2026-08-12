@@ -1,15 +1,23 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { track } from "@/lib/analytics";
 import { logError, logInfo } from "@/lib/logger";
 import { getPostAuthPath } from "@/lib/postAuthPath";
 import type { PublicUser } from "@/lib/types";
 
 type Mode = "login" | "signup";
 
+function safeNextPath(raw: string | null): string | null {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return null;
+  return raw;
+}
+
 export function AuthForm({ mode }: { mode: Mode }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -26,7 +34,14 @@ export function AuthForm({ mode }: { mode: Mode }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          mode === "signup" ? { email, password, displayName } : { email, password },
+          mode === "signup"
+            ? {
+                email,
+                password,
+                displayName,
+                inviteCode: searchParams.get("invite") || undefined,
+              }
+            : { email, password },
         ),
       });
       const data = await res.json();
@@ -36,13 +51,13 @@ export function AuthForm({ mode }: { mode: Mode }) {
         return;
       }
       logInfo("auth.form.ok", { mode, userId: data.user?._id });
-      // Signup always starts onboarding; login uses role-aware home.
+      track(mode === "signup" ? "signup_completed" : "login_completed", { userId: data.user?._id });
+      // Signup always starts onboarding; login uses ?next= (middleware) or role-aware home.
+      const next = safeNextPath(searchParams.get("next"));
       const path =
         mode === "signup"
           ? "/onboarding"
-          : data.user
-            ? getPostAuthPath(data.user as PublicUser)
-            : "/play";
+          : next || (data.user ? getPostAuthPath(data.user as PublicUser) : "/play");
       logInfo("auth.form.redirect", { mode, path, userId: data.user?._id });
       router.push(path);
       router.refresh();
@@ -69,10 +84,17 @@ export function AuthForm({ mode }: { mode: Mode }) {
         <span style={{ fontWeight: 600 }}>Email</span>
         <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
       </label>
-      <label style={{ display: "grid", gap: 8, marginBottom: 18 }}>
+      <label style={{ display: "grid", gap: 8, marginBottom: mode === "login" ? 10 : 18 }}>
         <span style={{ fontWeight: 600 }}>Password</span>
         <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
       </label>
+      {mode === "login" && (
+        <p style={{ marginBottom: 18, textAlign: "right" }}>
+          <Link href="/forgot-password" style={{ color: "var(--court-500)", fontWeight: 600, fontSize: 14 }}>
+            Forgot password?
+          </Link>
+        </p>
+      )}
       {error && <p style={{ color: "var(--status-danger)", marginBottom: 12 }}>{error}</p>}
       <button className="btn-primary" type="submit" disabled={loading} style={{ width: "100%", justifyContent: "center" }}>
         {loading ? "Please wait…" : mode === "login" ? "Log in" : "Create account"}

@@ -42,14 +42,32 @@ export async function AppNav() {
           <Link href="/play" style={{ font: "700 var(--text-sm)/1 var(--font-sans)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
             Play
           </Link>
+          <Link href="/groups" style={{ font: "700 var(--text-sm)/1 var(--font-sans)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            Groups
+          </Link>
+          <Link href="/coaches" style={{ font: "700 var(--text-sm)/1 var(--font-sans)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            Coaches
+          </Link>
+          <Link href="/compete" style={{ font: "700 var(--text-sm)/1 var(--font-sans)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            Compete
+          </Link>
           <Link href="/bookings" style={{ font: "700 var(--text-sm)/1 var(--font-sans)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
             Bookings
           </Link>
-          {user?.roles?.some((r) => ["venue_owner", "venue_staff"].includes(r)) && (
+          {user && (
+            <Link href="/notifications" style={{ font: "700 var(--text-sm)/1 var(--font-sans)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+              Alerts
+            </Link>
+          )}
+          {user?.roles?.some((r) => ["venue_owner", "venue_staff"].includes(r)) ? (
             <Link href="/venue" style={{ font: "700 var(--text-sm)/1 var(--font-sans)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
               Venue
             </Link>
-          )}
+          ) : user ? (
+            <Link href="/list-your-venue" style={{ font: "700 var(--text-sm)/1 var(--font-sans)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+              List venue
+            </Link>
+          ) : null}
           {user?.roles?.includes("admin") && (
             <Link href="/admin" style={{ font: "700 var(--text-sm)/1 var(--font-sans)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
               Admin

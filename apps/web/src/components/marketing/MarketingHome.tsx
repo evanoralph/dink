@@ -8,7 +8,7 @@ type Props = {
   showTestimonials?: boolean;
   /** Unshipped — keep off until leagues exist (P4). */
   showCompete?: boolean;
-  /** Unshipped — keep off until coaching marketplace exists (P3). */
+  /** Coaching marketplace ships in P3; still flag-gated for marketing. */
   showCoaching?: boolean;
   /** From FeatureFlags.payments_stub — honest checkout copy. */
   paymentsStub?: boolean;
@@ -351,34 +351,22 @@ export function MarketingHome({
           <div className="label">Compete</div>
           <h2 className="display" style={{ margin: "16px 0 0" }}>Leagues that run<br />without spreadsheets.</h2>
           <p style={{ margin: "20px 0 0", color: "var(--text-muted)", maxWidth: "46ch", font: "400 var(--text-lg)/var(--text-leading) var(--font-sans)" }}>Seasons, divisions, match windows, standings and playoffs in one place.</p>
+          <Link href="/compete" className="btn-primary" style={{ marginTop: 28, display: "inline-flex" }}>
+            Open compete hub
+          </Link>
         </section>
       )}
 
       {showCoaching && (
         <section id="coaching" style={{ maxWidth: "var(--max-content)", margin: "0 auto", padding: "88px var(--gutter-page-lg) 0" }}>
           <div className="label">Coaching</div>
-          <h2 className="display" style={{ margin: "16px 0 0" }}>Book a coach<br />and a court together.</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, marginTop: 40 }} className="cards-3">
-            {[
-              ["MG", "Coach Miguel", "Third-shot drop · Doubles strategy", "₱1,200"],
-              ["AR", "Coach Ana", "Beginner fundamentals · Serve", "₱650"],
-              ["JT", "Coach Jen", "Tournament prep · Dinking", "₱1,500"],
-            ].map(([initials, name, meta, price]) => (
-              <div key={name} className="card" style={{ padding: "var(--space-6)" }}>
-                <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-                  <span style={{ width: 56, height: 56, borderRadius: "var(--radius-md)", background: "var(--court-900)", color: "var(--volt-400)", font: "700 18px/56px var(--font-mono)", textAlign: "center" }}>{initials}</span>
-                  <div>
-                    <div style={{ font: "400 24px/0.95 var(--font-display)", textTransform: "uppercase" }}>{name}</div>
-                    <div style={{ font: "500 var(--text-sm)/1.4 var(--font-sans)", color: "var(--text-muted)", marginTop: 4 }}>{meta}</div>
-                  </div>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--border-hairline)" }}>
-                  <span style={{ color: "var(--text-muted)", font: "500 var(--text-sm)/1 var(--font-sans)" }}>Lesson</span>
-                  <span style={{ font: "700 var(--text-lg)/1 var(--font-mono)" }}>{price}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+          <h2 className="display" style={{ margin: "16px 0 0" }}>Book a coach<br />in your city.</h2>
+          <p style={{ margin: "20px 0 0", color: "var(--text-muted)", maxWidth: "46ch", font: "400 var(--text-lg)/var(--text-leading) var(--font-sans)" }}>
+            Real coach profiles, session requests, and reviews — not placeholder cards.
+          </p>
+          <Link href="/coaches" className="btn-primary" style={{ marginTop: 28, display: "inline-flex" }}>
+            Browse coaches
+          </Link>
         </section>
       )}
 
@@ -387,7 +375,7 @@ export function MarketingHome({
           <div style={{ font: "var(--label-weight) var(--label-size)/1 var(--font-sans)", letterSpacing: "var(--label-tracking)", textTransform: "uppercase", color: "var(--volt-400)" }}>For venue owners</div>
           <h2 style={{ margin: "16px 0 0", font: "400 var(--display-lg)/var(--display-leading) var(--font-display)", textTransform: "uppercase" }}>Fill the empty<br />hours.</h2>
           <p style={{ margin: "20px 0 0", maxWidth: "44ch", opacity: 0.84, font: "400 var(--text-lg)/var(--text-leading) var(--font-sans)" }}>Manage courts, calendar, bookings, and staff from one venue dashboard.</p>
-          <Link href="/signup" className="btn-primary" style={{ marginTop: 34, display: "inline-flex" }}>List your courts</Link>
+          <Link href="/list-your-venue" className="btn-primary" style={{ marginTop: 34, display: "inline-flex" }}>List your courts</Link>
         </div>
       </section>
 

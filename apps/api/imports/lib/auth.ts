@@ -68,12 +68,21 @@ export async function resolveUserFromRequest(req: {
 export function publicUser(user: Meteor.User, roles: Role[] | null | undefined) {
   return {
     _id: user._id!,
-    email: user.emails?.[0]?.address,
+    email: user.profile?.deletedAt ? undefined : user.emails?.[0]?.address,
     profile: {
       displayName: user.profile?.displayName || "Player",
       city: user.profile?.city,
       skillLevel: user.profile?.skillLevel,
       onboardingComplete: Boolean(user.profile?.onboardingComplete),
+      reliabilityScore: user.profile?.reliabilityScore,
+      reliabilityLevel: user.profile?.reliabilityLevel || "new",
+      reliabilityCompleted: user.profile?.reliabilityCompleted || 0,
+      reliabilityNoShows: user.profile?.reliabilityNoShows || 0,
+      suspended: Boolean(user.profile?.suspended),
+      inviteCode: user.profile?.inviteCode,
+      inviteCount: user.profile?.inviteCount || 0,
+      invitedBy: user.profile?.invitedBy,
+      rating: typeof user.profile?.rating === "number" ? user.profile.rating : 1000,
     },
     roles: Array.isArray(roles) ? roles : [],
   };

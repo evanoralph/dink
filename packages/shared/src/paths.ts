@@ -18,6 +18,9 @@ export const ApiPaths = {
   booking: (id: string) => `${API_PREFIX}/bookings/${id}`,
   bookingCheckout: (id: string) => `${API_PREFIX}/bookings/${id}/checkout`,
   bookingCancel: (id: string) => `${API_PREFIX}/bookings/${id}/cancel`,
+  bookingCancelPolicy: `${API_PREFIX}/bookings/cancel-policy`,
+  notifications: `${API_PREFIX}/notifications`,
+  notificationsRead: `${API_PREFIX}/notifications/read`,
   games: `${API_PREFIX}/games`,
   game: (id: string) => `${API_PREFIX}/games/${id}`,
   gameJoin: (id: string) => `${API_PREFIX}/games/${id}/join`,
@@ -49,4 +52,7 @@ export const ApiPaths = {
   venueDashboard: `${API_PREFIX}/venue/dashboard`,
   venueCalendar: `${API_PREFIX}/venue/calendar`,
   venueStaff: `${API_PREFIX}/venue/staff`,
+  venueAvailabilityRules: `${API_PREFIX}/venue/availability-rules`,
+  venuePricingRules: `${API_PREFIX}/venue/pricing-rules`,
+  venueBlackouts: `${API_PREFIX}/venue/blackouts`,
 } as const;

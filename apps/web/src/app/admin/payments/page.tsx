@@ -17,7 +17,9 @@ import { logInfo } from "@/lib/logger";
 
 type Payment = {
   _id: string;
-  bookingId: string;
+  bookingId?: string;
+  tournamentId?: string;
+  packId?: string;
   userId: string;
   provider: string;
   amount: number;
@@ -78,7 +80,17 @@ export default async function AdminPaymentsPage({
           {
             key: "booking",
             header: "Booking",
-            render: (p) => <span className="admin-mono">{p.bookingId.slice(0, 10)}…</span>,
+            render: (p) => (
+              <span className="admin-mono">
+                {p.bookingId
+                  ? `${p.bookingId.slice(0, 10)}…`
+                  : p.tournamentId
+                    ? `t:${p.tournamentId.slice(0, 8)}…`
+                    : p.packId
+                      ? `pack:${p.packId.slice(0, 8)}…`
+                      : "—"}
+              </span>
+            ),
           },
           {
             key: "amount",

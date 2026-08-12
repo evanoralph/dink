@@ -5,6 +5,18 @@ declare module "meteor/meteor" {
       city?: string;
       skillLevel?: number;
       onboardingComplete?: boolean;
+      reliabilityCompleted?: number;
+      reliabilityNoShows?: number;
+      reliabilityScore?: number;
+      reliabilityLevel?: "new" | "reliable" | "highly_reliable";
+      suspended?: boolean;
+      deletedAt?: Date;
+      inviteCode?: string;
+      inviteCount?: number;
+      invitedBy?: string;
+      phone?: string;
+      /** P4-01 Elo-like rating (default 1000). */
+      rating?: number;
     }
     interface User {
       profile?: UserProfile;
